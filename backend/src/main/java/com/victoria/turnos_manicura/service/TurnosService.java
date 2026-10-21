@@ -11,6 +11,7 @@ import com.victoria.turnos_manicura.repository.ServiciosRepository;
 import com.victoria.turnos_manicura.repository.TiposUsuarioRepository;
 import com.victoria.turnos_manicura.repository.TurnosRepository;
 import com.victoria.turnos_manicura.repository.UsuariosRepository;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -43,6 +44,10 @@ public class TurnosService {
 
     // Tope de turnos por página, para que no se pueda pedir todo de una vez con un size enorme
     private static final int TAMANIO_MAXIMO_PAGINA = 100;
+
+    // Anticipación mínima con la que un cliente puede cancelar su turno (0 = sin límite)
+    @Value("${app.turnos.horas-minimas-cancelacion:24}")
+    private long horasMinimasCancelacion;
 
     private final TurnosRepository repository;
     private final UsuariosRepository usuariosRepository;
@@ -180,6 +185,12 @@ public class TurnosService {
         }
         if (turno.getDiaHorario().isBefore(LocalDateTime.now())) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "No se puede cancelar un turno que ya pasó");
+        }
+        // Los clientes cancelan con anticipación; la manicurista y el admin pueden cancelar siempre (urgencias)
+        if (AuthService.ROL_CLIENTE.equals(sesion.getRol())
+                && turno.getDiaHorario().isBefore(LocalDateTime.now().plusHours(horasMinimasCancelacion))) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Solo se puede cancelar con al menos "
+                    + horasMinimasCancelacion + " hs de anticipación. Comunicate con la manicurista");
         }
 
         turno.setActivo(false);
