@@ -45,6 +45,7 @@ CREATE TABLE turnos(
 	duracion TIME,
 	dia_horario DATETIME,
 	activo BOOLEAN,
+	recordatorio_enviado BOOLEAN NOT NULL DEFAULT FALSE,
 	PRIMARY KEY(id),
 	CONSTRAINT fkTurnoManicurista FOREIGN KEY(id_usuario_manicurista) REFERENCES usuarios(id),
 	CONSTRAINT fkTurnoCliente FOREIGN KEY(id_usuario_cliente) REFERENCES usuarios(id),

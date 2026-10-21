@@ -36,6 +36,7 @@ También podés crear tu propia cuenta de cliente o manicurista desde **"¿No te
 - **Servicios por manicurista:** cada una ofrece servicios del catálogo con **su propio precio y duración**. El turno guarda el precio y la duración con los que se reservó, así cambios posteriores no alteran turnos viejos.
 - **Agenda visual del día** (ocupado / libre) y **calendario** para el cliente.
 - **Cancelar y reprogramar** turnos.
+- **Avisos y recordatorios por mail:** al reservar, cancelar o reprogramar un turno se avisa a la otra parte (manicurista o cliente), y el cliente recibe un **recordatorio 24 hs antes**, una sola vez por horario. Los mails salen en segundo plano y, si fallan, no afectan la operación. Si no hay servidor de correo configurado, no se manda nada. Ver [Avisos por mail](#-avisos-por-mail).
 - **Administración de usuarios** con baja lógica: un usuario dado de baja no puede iniciar sesión y se le cierran las sesiones abiertas.
 - **Manejo centralizado de errores:** los mensajes de validación llegan al frontend y se muestran al usuario.
 
@@ -107,6 +108,15 @@ Antes de levantar, copiá `.env.example` como `.env` y poné tu clave de MySQL (
 
 La clave de MySQL se define en `.env` (ver `.env.example`).
 
+### 📧 Avisos por mail
+
+Los avisos están **apagados por defecto**: se activan al definir `SMTP_HOST` en el `.env` (ver `.env.example` para el resto de las variables: puerto, usuario, clave, remitente).
+
+Para **probarlos sin mandar mails de verdad** hay una casilla de prueba (Mailpit): poné `SMTP_HOST=mailpit` y `SMTP_PORT=1025` en `.env`, levantá con `docker compose --profile correo up --build` y mirá la bandeja en http://localhost:8025.
+
+El recordatorio se controla en `application.properties` (`app.recordatorios.horas-antes`, `app.recordatorios.intervalo-minutos`). Si ya tenías una base creada antes de esta función, agregale la columna con
+`ALTER TABLE turnos ADD COLUMN recordatorio_enviado BOOLEAN NOT NULL DEFAULT FALSE;` (o recreala con `docker compose down -v`).
+
 ### Opción B: sin Docker
 Requisitos: JDK 17 y MySQL 8 en el puerto **3308** (o cambiá el puerto en `application.properties`).
 
@@ -140,7 +150,7 @@ cd backend
 | Recurso | Endpoints |
 |---|---|
 | Auth | `POST /auth/login`, `POST /auth/registro`, `POST /auth/logout` |
-| Turnos | `GET/POST /turnos`, `PUT /turnos/{id}/cancelar`, `PUT /turnos/{id}/reprogramar`, `GET /turnos/agenda` |
+| Turnos | `GET/POST /turnos`, `GET /turnos/pagina?page=0&size=20&idManicurista=` (paginado, más recientes primero), `PUT /turnos/{id}/cancelar`, `PUT /turnos/{id}/reprogramar`, `GET /turnos/agenda` |
 | Disponibilidad | `GET /disponibilidad/manicurista/{id}`, `GET/PUT /disponibilidad/franjas`, `GET/POST/PUT/DELETE /disponibilidad/bloqueos` |
 | Servicios | `GET/POST/PUT /servicios`, `GET/POST/PUT /servicios/ofertas` |
 | Usuarios | `GET/POST /usuarios`, `PUT /usuarios/{id}`, `PUT /usuarios/{id}/activo` |
@@ -168,7 +178,7 @@ Las rutas protegidas esperan el header `Authorization: Bearer <token>` que devue
 - Agregar tests de integración de los controllers y de la base (hoy hay tests unitarios de la capa de servicios).
 - Migraciones de base con **Flyway** en lugar de un script único.
 - Mover las credenciales a un gestor de secretos (hoy van por variables de entorno).
-- Notificaciones por email o WhatsApp al reservar o cancelar.
+- Avisos también por **WhatsApp**, y recordatorios configurables por cliente (hoy son por mail y fijos en 24 hs).
 
 ---
 

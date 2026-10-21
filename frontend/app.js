@@ -1,5 +1,8 @@
 // sesion: { token, id, nombre, apellido, email, rol } — rol es CLIENTE o MANICURISTA
-const state = { tipos: [], usuarios: [], servicios: [], ofertas: [], turnos: [], sesion: null };
+// turnos = todos los turnos del usuario (solo cliente y manicurista: alimentan "mis turnos" y la detección de superposiciones);
+// pagina = la página de la tabla de turnos tal como la devuelve el backend (el admin solo trabaja con esta)
+const TURNOS_POR_PAGINA = 20;
+const state = { tipos: [], usuarios: [], servicios: [], ofertas: [], turnos: [], pagina: { content: [], number: 0, totalPages: 0, totalElements: 0 }, sesion: null };
 // Qué se está editando en los formularios del admin (null = alta nueva)
 let usuarioEnEdicion = null;
 let servicioEnEdicion = null;
@@ -596,13 +599,37 @@ function renderMisTurnos() {
   }).join('');
 }
 
+// Pide la página de la tabla (ya filtrada y ordenada por el backend). El admin no baja la lista completa
+async function cargarTurnos(pagina = state.pagina.number) {
+  const filtro = Number($('#filtroManicurista').value) || null;
+  const query = `page=${pagina}&size=${TURNOS_POR_PAGINA}${filtro ? `&idManicurista=${filtro}` : ''}`;
+  const pedidos = [get(`/turnos/pagina?${query}`)];
+  if (state.sesion?.rol !== 'ADMIN') pedidos.push(get('/turnos'));
+  const [paginaNueva, todos] = await Promise.all(pedidos);
+
+  // Si se canceló o se filtró y la página ya no existe, se vuelve a pedir la última
+  if (paginaNueva.totalPages && pagina >= paginaNueva.totalPages) return cargarTurnos(paginaNueva.totalPages - 1);
+  state.pagina = paginaNueva;
+  if (todos) state.turnos = todos;
+  renderTurnos();
+}
+
+function renderPaginador() {
+  const { number, totalPages, totalElements } = state.pagina;
+  $('#paginadorTurnos').hidden = totalPages <= 1;
+  $('#paginadorInfo').textContent = `Página ${number + 1} de ${totalPages} · ${totalElements} turnos`;
+  $('#paginaAnterior').disabled = number === 0;
+  $('#paginaSiguiente').disabled = number >= totalPages - 1;
+}
+
+$('#paginaAnterior').addEventListener('click', () => cargarTurnos(state.pagina.number - 1).catch((err) => toast(err.message, true)));
+$('#paginaSiguiente').addEventListener('click', () => cargarTurnos(state.pagina.number + 1).catch((err) => toast(err.message, true)));
+
 function renderTurnos() {
   renderMisTurnos();
+  renderPaginador();
   const tbody = $('#tablaTurnos');
-  const filtro = Number($('#filtroManicurista').value) || null;
-  const turnos = state.turnos
-    .filter((t) => !filtro || t.idManicurista === filtro)
-    .sort((a, b) => String(a.diaHorario).localeCompare(String(b.diaHorario)));
+  const turnos = state.pagina.content;
 
   if (!turnos.length) return filaVacia(tbody, 6, 'No hay turnos');
   tbody.innerHTML = turnos.map((t) => {
@@ -722,7 +749,7 @@ async function cancelarDesdeClick(e) {
   try {
     await api(`/turnos/${id}/cancelar`, { method: 'PUT' });
     toast('Turno cancelado');
-    await cargar('turnos', '/turnos', renderTurnos);
+    await cargarTurnos();
     cargarAgenda();
   } catch (err) {
     toast(err.message, true);
@@ -739,7 +766,7 @@ let turnoReprogramando = null;
 let horaReprogramar = '';
 
 function abrirReprogramar(id) {
-  const t = state.turnos.find((x) => String(x.id) === String(id));
+  const t = [...state.turnos, ...state.pagina.content].find((x) => String(x.id) === String(id));
   if (!t) return;
   turnoReprogramando = t;
   horaReprogramar = '';
@@ -800,7 +827,7 @@ $('#formReprogramar').addEventListener('submit', async (e) => {
     await api(`/turnos/${t.id}/reprogramar`, { method: 'PUT', body: JSON.stringify({ diaHorario: `${fecha} ${horaReprogramar}:00` }) });
     $('#modalReprogramar').close();
     toast('Turno reprogramado');
-    await cargar('turnos', '/turnos', renderTurnos);
+    await cargarTurnos();
     cargarAgenda();
   } catch (err) {
     const error = $('#reprogramarError');
@@ -824,7 +851,7 @@ async function cargarTodo() {
     cargar('usuarios', '/usuarios', renderUsuarios),
     cargar('servicios', '/servicios', renderServicios),
     cargar('ofertas', '/servicios/ofertas', renderServicios),
-    cargar('turnos', '/turnos', renderTurnos),
+    cargarTurnos(),
   ]);
   // Los turnos y usuarios muestran nombres de otras tablas: re-render cuando todo llegó
   renderUsuarios();
@@ -920,7 +947,7 @@ $('#horariosLibres').addEventListener('click', (e) => {
 
 // Al cambiar manicurista, servicio o fecha se traen los turnos al día y se recalculan los horarios
 async function actualizarHorarios() {
-  try { await cargar('turnos', '/turnos', renderTurnos); } catch {}
+  try { await cargarTurnos(); } catch {}
   renderHorarios();
 }
 for (const campo of ['idManicurista', 'idServicio', 'fecha']) {
@@ -942,7 +969,7 @@ $('#formTurno').addEventListener('submit', (e) => {
       diaHorario: `${f.fecha.value} ${f.hora.value}:00`,
     });
     toast('Turno reservado');
-    await cargar('turnos', '/turnos', renderTurnos);
+    await cargarTurnos();
     cargarAgenda();
   });
 });
@@ -1121,7 +1148,7 @@ $('#formTipo').addEventListener('submit', (e) => {
   });
 });
 
-$('#filtroManicurista').addEventListener('change', renderTurnos);
+$('#filtroManicurista').addEventListener('change', () => cargarTurnos(0).catch((err) => toast(err.message, true)));
 
 // ---------- Tabs ----------
 
