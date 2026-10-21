@@ -7,13 +7,15 @@ import com.victoria.turnos_manicura.exception.ValidacionException;
 import com.victoria.turnos_manicura.model.UsuariosModel;
 import com.victoria.turnos_manicura.repository.TiposUsuarioRepository;
 import com.victoria.turnos_manicura.repository.UsuariosRepository;
-import lombok.AllArgsConstructor;
 import lombok.Getter;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
 
+import java.time.Duration;
+import java.time.Instant;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
@@ -25,15 +27,34 @@ public class AuthService {
     public static final String ROL_CLIENTE = "CLIENTE";
     public static final String ROL_ADMIN = "ADMIN";
 
-    // Sesión en memoria: se pierde al reiniciar el backend y hay que volver a iniciar sesión
+    private static final int MAX_INTENTOS_FALLIDOS = 5;
+    private static final Duration BLOQUEO_LOGIN = Duration.ofMinutes(15);
+
+    // Sesión en memoria: se pierde al reiniciar el backend y hay que volver a iniciar sesión.
+    // Vence por inactividad: cada uso la renueva (ver requerirSesion)
     @Getter
-    @AllArgsConstructor
     public static class Sesion {
         private final Long idUsuario;
         private final String rol;
+        private volatile Instant ultimoUso = Instant.now();
+
+        public Sesion(Long idUsuario, String rol) {
+            this.idUsuario = idUsuario;
+            this.rol = rol;
+        }
     }
 
+    // Intentos de login fallidos por email; al llegar al máximo el email queda bloqueado un rato
+    private static class Intentos {
+        private int fallidos;
+        private Instant bloqueadoHasta;
+    }
+
+    @Value("${app.sesion.minutos-inactividad:480}")
+    private long minutosInactividad = 480;
+
     private final Map<String, Sesion> sesiones = new ConcurrentHashMap<>();
+    private final Map<String, Intentos> intentosLogin = new ConcurrentHashMap<>();
     private final UsuariosRepository usuariosRepository;
     private final TiposUsuarioRepository tiposRepository;
     private final PasswordEncoder passwordEncoder;
@@ -48,20 +69,25 @@ public class AuthService {
     }
 
     public LoginResponse login(LoginRequest request) {
+        String clave = request.getEmail().trim().toLowerCase();
+        verificarNoBloqueado(clave);
+
         UsuariosModel usuario = usuariosRepository.findByEmailIgnoreCase(request.getEmail().trim())
                 .filter(u -> u.getPassword() != null && passwordEncoder.matches(request.getPassword(), u.getPassword()))
-                .map(u -> {
-                    if (!u.isActivo()) {
-                        throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Tu cuenta está dada de baja");
-                    }
-                    return u;
-                })
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Email o contraseña incorrectos"));
+                .orElseThrow(() -> {
+                    registrarFallo(clave);
+                    return new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Email o contraseña incorrectos");
+                });
+        if (!usuario.isActivo()) {
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Tu cuenta está dada de baja");
+        }
+        intentosLogin.remove(clave);
 
         String rol = tiposRepository.findById((long) usuario.getTipo())
                 .map(t -> t.getDescripcion().toUpperCase())
                 .orElse("");
 
+        sesiones.values().removeIf(this::vencida);
         String token = UUID.randomUUID().toString();
         sesiones.put(token, new Sesion(usuario.getId(), rol));
 
@@ -107,11 +133,47 @@ public class AuthService {
 
     // Recibe el header "Authorization: Bearer <token>"
     public Sesion requerirSesion(String authorization) {
-        Sesion sesion = sesiones.get(token(authorization));
+        String token = token(authorization);
+        Sesion sesion = sesiones.get(token);
+        if (sesion != null && vencida(sesion)) {
+            sesiones.remove(token);
+            sesion = null;
+        }
         if (sesion == null) {
             throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Iniciá sesión para continuar");
         }
+        sesion.ultimoUso = Instant.now();
         return sesion;
+    }
+
+    private boolean vencida(Sesion sesion) {
+        return sesion.getUltimoUso().plus(Duration.ofMinutes(minutosInactividad)).isBefore(Instant.now());
+    }
+
+    private void verificarNoBloqueado(String clave) {
+        Intentos intentos = intentosLogin.get(clave);
+        if (intentos == null || intentos.bloqueadoHasta == null) {
+            return;
+        }
+        if (intentos.bloqueadoHasta.isAfter(Instant.now())) {
+            long minutos = Duration.between(Instant.now(), intentos.bloqueadoHasta).toMinutes() + 1;
+            throw new ResponseStatusException(HttpStatus.TOO_MANY_REQUESTS,
+                    "Demasiados intentos fallidos. Probá de nuevo en " + minutos + " minutos");
+        }
+        intentosLogin.remove(clave);
+    }
+
+    private void registrarFallo(String clave) {
+        intentosLogin.compute(clave, (k, intentos) -> {
+            if (intentos == null) {
+                intentos = new Intentos();
+            }
+            intentos.fallidos++;
+            if (intentos.fallidos >= MAX_INTENTOS_FALLIDOS) {
+                intentos.bloqueadoHasta = Instant.now().plus(BLOQUEO_LOGIN);
+            }
+            return intentos;
+        });
     }
 
     public Sesion requerirManicurista(String authorization) {

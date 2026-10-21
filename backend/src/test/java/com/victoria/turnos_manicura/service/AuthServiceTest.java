@@ -18,6 +18,7 @@ import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.util.Optional;
@@ -211,6 +212,43 @@ class AuthServiceTest {
         org.mockito.ArgumentCaptor<UsuariosModel> captor = org.mockito.ArgumentCaptor.forClass(UsuariosModel.class);
         verify(usuariosService).guardar(captor.capture());
         assertEquals("Calle Falsa 123", captor.getValue().getDireccion());
+    }
+
+    // ---------- bloqueo de login y vencimiento de sesión ----------
+
+    @Test
+    void login_cincoFallos_bloqueaElEmailAunqueLaClaveSeaCorrecta() {
+        for (int i = 0; i < 5; i++) {
+            assertThrows(ResponseStatusException.class, () -> service.login(login("ana@mail.com", "mala")));
+        }
+
+        ResponseStatusException e = assertThrows(ResponseStatusException.class,
+                () -> service.login(login("ana@mail.com", "123456")));
+
+        assertEquals(HttpStatus.TOO_MANY_REQUESTS, e.getStatusCode());
+    }
+
+    @Test
+    void login_exitosoReiniciaElContadorDeFallos() {
+        for (int i = 0; i < 4; i++) {
+            assertThrows(ResponseStatusException.class, () -> service.login(login("ana@mail.com", "mala")));
+        }
+        service.login(login("ana@mail.com", "123456"));
+
+        for (int i = 0; i < 4; i++) {
+            assertThrows(ResponseStatusException.class, () -> service.login(login("ana@mail.com", "mala")));
+        }
+
+        assertDoesNotThrow(() -> service.login(login("ana@mail.com", "123456")));
+    }
+
+    @Test
+    void requerirSesion_sesionInactivaPasadoElLimite_lanzaUnauthorized() {
+        String header = "Bearer " + service.login(login("ana@mail.com", "123456")).getToken();
+        ReflectionTestUtils.setField(service, "minutosInactividad", -1L);
+
+        assertEquals(HttpStatus.UNAUTHORIZED,
+                assertThrows(ResponseStatusException.class, () -> service.requerirSesion(header)).getStatusCode());
     }
 
     // ---------- helpers ----------

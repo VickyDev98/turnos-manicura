@@ -101,17 +101,17 @@ La primera vez tarda unos minutos (descarga imágenes y compila el backend). Cua
 |---|---|
 | Frontend | http://localhost:3000 |
 | Backend (API) | http://localhost:8080 |
-| MySQL | `localhost:3309` (usuario `root`, clave `1234`) |
+| MySQL | `localhost:3309` (usuario `root`, clave la de tu `.env`) |
 
-La base se crea y se carga sola con `scripts/Turnos.sql` la primera vez. Para apagar todo: `docker compose down`. Para **borrar también los datos y volver a empezar de cero**: `docker compose down -v`.
+Antes de levantar, copiá `.env.example` como `.env` y poné tu clave de MySQL (es obligatoria). La base se crea y se carga sola con `scripts/Turnos.sql` la primera vez. Para apagar todo: `docker compose down`. Para **borrar también los datos y volver a empezar de cero**: `docker compose down -v`.
 
-Opcional: copiá `.env.example` como `.env` para cambiar la clave de MySQL.
+La clave de MySQL se define en `.env` (ver `.env.example`).
 
 ### Opción B: sin Docker
 Requisitos: JDK 17 y MySQL 8 en el puerto **3308** (o cambiá el puerto en `application.properties`).
 
 1. Ejecutá `scripts/Turnos.sql` en MySQL (⚠️ hace `DROP DATABASE IF EXISTS TURNOS`: borra y recrea la base).
-2. Revisá usuario y clave en `backend/src/main/resources/application.properties` y corré:
+2. Definí la clave de MySQL en la variable de entorno `DB_PASSWORD` (opcionales: `DB_USER`, `DB_URL`) y corré:
    ```bash
    cd backend
    ./mvnw spring-boot:run        # en Windows: mvnw.cmd spring-boot:run

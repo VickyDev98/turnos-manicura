@@ -6,7 +6,7 @@ services:
   mysql:
     image: mysql:8
     environment:
-      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-1234}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?Definí MYSQL_ROOT_PASSWORD en un archivo .env (copiá .env.example)}
     ports:
       - "3309:3306"
     volumes:
@@ -16,7 +16,7 @@ services:
     healthcheck:
       # 127.0.0.1 (TCP) y no el socket: el servidor temporal de arranque no acepta TCP,
       # así no se marca "healthy" antes de que termine de cargarse Turnos.sql
-      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-uroot", "-p${MYSQL_ROOT_PASSWORD:-1234}"]
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-uroot", "-p${MYSQL_ROOT_PASSWORD:?Definí MYSQL_ROOT_PASSWORD en un archivo .env (copiá .env.example)}"]
       interval: 5s
       timeout: 5s
       retries: 20
@@ -26,7 +26,7 @@ services:
     environment:
       SPRING_DATASOURCE_URL: jdbc:mysql://mysql:3306/TURNOS
       SPRING_DATASOURCE_USERNAME: root
-      SPRING_DATASOURCE_PASSWORD: ${MYSQL_ROOT_PASSWORD:-1234}
+      SPRING_DATASOURCE_PASSWORD: ${MYSQL_ROOT_PASSWORD:?Definí MYSQL_ROOT_PASSWORD en un archivo .env (copiá .env.example)}
     ports:
       - "8080:8080"
     depends_on:
