@@ -1,0 +1,7 @@
+# Compilado y configuración del IDE
+target/
+.idea/
+*.iml
+
+# Variables de entorno con claves reales
+.env

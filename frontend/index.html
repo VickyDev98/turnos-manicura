@@ -1,0 +1,324 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Turnos Manicura</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div id="loginOverlay" class="login-overlay" hidden>
+    <form id="formLogin" class="card login-card" novalidate>
+      <h1>💅 Turnos Manicura</h1>
+      <p class="login-sub">Iniciá sesión para continuar</p>
+      <label>Email
+        <input type="email" name="email" autocomplete="username" required>
+      </label>
+      <label>Contraseña
+        <input type="password" name="password" autocomplete="current-password" required>
+      </label>
+      <button type="submit" class="btn">Ingresar</button>
+      <button type="button" class="btn-texto" id="irARegistro">¿No tenés cuenta? Registrate</button>
+    </form>
+
+    <form id="formRegistro" class="card login-card" novalidate hidden>
+      <h1>Crear cuenta</h1>
+      <div class="rol-opciones">
+        <label class="radio"><input type="radio" name="rol" value="CLIENTE" checked> Soy cliente</label>
+        <label class="radio"><input type="radio" name="rol" value="MANICURISTA"> Soy manicurista</label>
+      </div>
+      <label>Nombre
+        <input type="text" name="nombre" maxlength="50" required>
+      </label>
+      <label>Apellido
+        <input type="text" name="apellido" maxlength="50" required>
+      </label>
+      <label>Email
+        <input type="email" name="email" maxlength="50" autocomplete="username" required>
+      </label>
+      <label>Teléfono (opcional)
+        <input type="tel" name="numeroContacto" inputmode="numeric" maxlength="10" placeholder="Ej: 1134567890">
+      </label>
+      <label id="campoDireccion" hidden>Dirección donde atendés
+        <input type="text" name="direccion" maxlength="100">
+      </label>
+      <label>Contraseña
+        <input type="password" name="password" minlength="6" autocomplete="new-password" required>
+      </label>
+      <label>Repetir contraseña
+        <input type="password" name="password2" autocomplete="new-password" required>
+      </label>
+      <button type="submit" class="btn">Crear cuenta</button>
+      <button type="button" class="btn-texto" id="irALogin">Ya tengo cuenta</button>
+    </form>
+  </div>
+
+  <header class="topbar">
+    <h1>💅 Turnos Manicura</h1>
+    <div class="api-config">
+      <label for="apiUrl">API</label>
+      <input id="apiUrl" type="text" value="http://localhost:8080">
+      <span id="apiStatus" class="status" title="Estado de la conexión">●</span>
+      <span id="usuarioActual" class="usuario-actual" hidden></span>
+      <button id="btnLogout" class="btn-logout" hidden>Salir</button>
+    </div>
+  </header>
+
+  <nav class="tabs">
+    <button class="tab" data-tab="misTurnos" data-solo="CLIENTE">Mis turnos</button>
+    <button class="tab" data-tab="agenda" data-solo="MANICURISTA">Mi agenda</button>
+    <button class="tab" data-tab="disponibilidad" data-solo="MANICURISTA">Horarios y bloqueos</button>
+    <button class="tab" data-tab="turnos">Turnos</button>
+    <button class="tab" data-tab="servicios">Servicios</button>
+    <button class="tab" data-tab="usuarios" data-solo="ADMIN">Usuarios</button>
+    <button class="tab" data-tab="tipos" data-solo="ADMIN">Tipos de usuario</button>
+  </nav>
+
+  <main>
+    <!-- MIS TURNOS (clientes) -->
+    <section id="misTurnos" class="panel">
+      <div class="card">
+        <h2>Calendario</h2>
+        <div class="agenda-leyenda">
+          <span><i class="dot reservado"></i> Día con turno reservado</span>
+          <span><i class="dot hoy"></i> Hoy</span>
+        </div>
+        <div id="calendario" class="calendario"></div>
+      </div>
+      <div class="card">
+        <h2>Próximos turnos</h2>
+        <div id="tarjetasTurnos" class="turno-cards"></div>
+      </div>
+    </section>
+
+    <!-- AGENDA -->
+    <section id="agenda" class="panel">
+      <div class="card">
+        <div class="card-head">
+          <h2>Agenda del día</h2>
+          <div class="agenda-filtros">
+            <label class="inline" data-solo="ADMIN">Manicurista
+              <select id="agendaManicurista"></select>
+            </label>
+            <label class="inline">Fecha
+              <input type="date" id="agendaFecha">
+            </label>
+          </div>
+        </div>
+        <div class="agenda-leyenda">
+          <span><i class="dot libre"></i> Disponible</span>
+          <span><i class="dot ocupado"></i> Ocupado</span>
+          <span><i class="dot nodisp"></i> No disponible</span>
+        </div>
+        <div id="agendaBarra" class="agenda-barra" role="img" aria-label="Disponibilidad del día"></div>
+        <div id="agendaHoras" class="agenda-horas"></div>
+        <div id="agendaDetalle" class="agenda-detalle"></div>
+      </div>
+    </section>
+
+    <!-- HORARIOS Y BLOQUEOS (manicuristas) -->
+    <section id="disponibilidad" class="panel">
+      <div class="card">
+        <h2>Mi horario de trabajo</h2>
+        <p class="ayuda">Los clientes solo pueden reservar dentro de estas franjas. Los días sin marcar no atendés.</p>
+        <form id="formFranjas" novalidate>
+          <div id="franjasSemana" class="franjas-semana"></div>
+          <button type="submit" class="btn">Guardar horario</button>
+        </form>
+      </div>
+
+      <div class="card">
+        <h2 id="tituloBloqueo">Bloquear un horario</h2>
+        <p class="ayuda">Bloqueá un horario para que no te reserven turnos y elegí cada cuánto se repite.</p>
+        <form id="formBloqueo" class="form-grid" novalidate>
+          <label>Fecha
+            <input type="date" name="fecha" required>
+          </label>
+          <label>Desde
+            <input type="time" name="horaDesde" step="900" required>
+          </label>
+          <label>Hasta
+            <input type="time" name="horaHasta" step="900" required>
+          </label>
+          <label>Motivo (opcional)
+            <input type="text" name="motivo" maxlength="50" placeholder="Ej: Almuerzo">
+          </label>
+          <div class="repeticion">
+            <label class="radio"><input type="radio" name="repeticion" value="UNICA" checked> <span data-rep="UNICA"></span></label>
+            <label class="radio"><input type="radio" name="repeticion" value="MES"> <span data-rep="MES"></span></label>
+            <label class="radio"><input type="radio" name="repeticion" value="SIEMPRE"> <span data-rep="SIEMPRE"></span></label>
+          </div>
+          <button type="submit" class="btn" id="btnBloqueo">Bloquear horario</button>
+          <button type="button" class="btn-secundario" id="btnCancelarEdicion" hidden>Cancelar edición</button>
+        </form>
+      </div>
+
+      <div class="card">
+        <h2>Horarios bloqueados</h2>
+        <div id="listaBloqueos" class="turno-cards"></div>
+      </div>
+    </section>
+
+    <!-- TURNOS -->
+    <section id="turnos" class="panel">
+      <div class="card">
+        <h2>Nuevo turno</h2>
+        <form id="formTurno" class="form-grid" novalidate>
+          <label data-solo="CLIENTE ADMIN">Manicurista
+            <select name="idManicurista" required></select>
+          </label>
+          <label data-solo="MANICURISTA ADMIN">Cliente
+            <select name="idCliente"></select>
+          </label>
+          <label>Servicio
+            <select name="idServicio" required></select>
+          </label>
+          <label>Fecha
+            <input type="date" name="fecha" required>
+          </label>
+          <label data-solo="MANICURISTA ADMIN">Hora
+            <input type="time" name="hora" step="900" required>
+          </label>
+          <div id="horariosLibres" class="slots" data-solo="CLIENTE"></div>
+          <button type="submit" class="btn">Reservar turno</button>
+        </form>
+      </div>
+      <div class="card">
+        <div class="card-head">
+          <h2>Turnos</h2>
+          <label class="inline" data-solo="CLIENTE ADMIN">Filtrar por manicurista
+            <select id="filtroManicurista"><option value="">Todas</option></select>
+          </label>
+        </div>
+        <table>
+          <thead><tr><th>Día y horario</th><th>Servicio</th><th>Manicurista</th><th>Cliente</th><th>Estado</th><th></th></tr></thead>
+          <tbody id="tablaTurnos"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- SERVICIOS -->
+    <section id="servicios" class="panel">
+      <div class="card" data-solo="MANICURISTA">
+        <h2>Mis servicios</h2>
+        <p class="ayuda">Estos son los servicios que ofrecés, cada uno con tu precio. Si das de baja uno, los clientes dejan de poder reservarlo (los turnos ya reservados se mantienen).</p>
+        <div id="misServicios" class="grid-cards"></div>
+      </div>
+      <div class="card" data-solo="MANICURISTA">
+        <div class="card-head">
+          <h2>Agregar a mis servicios</h2>
+          <button type="button" class="btn" id="btnAgregarTodos" hidden>Agregar todos</button>
+        </div>
+        <p class="ayuda">Tocá "Agregar" para ofrecer un servicio del catálogo con su precio sugerido. Después podés cambiarle el precio.</p>
+        <div id="catalogoParaAgregar" class="grid-cards"></div>
+      </div>
+      <div class="card" data-solo="MANICURISTA ADMIN">
+        <h2 id="tituloServicio">Nuevo servicio en el catálogo</h2>
+        <p class="ayuda">El precio es el sugerido; si sos manicurista, el servicio se agrega también a los tuyos.</p>
+        <form id="formServicio" class="form-grid" novalidate>
+          <label>Nombre
+            <input type="text" name="nombre" required maxlength="50">
+          </label>
+          <label>Descripción
+            <input type="text" name="descripcion" maxlength="50">
+          </label>
+          <label>Duración (min)
+            <input type="number" name="duracion" min="5" max="480" required>
+          </label>
+          <label>Precio sugerido ($)
+            <input type="number" name="precio" min="1" max="99999999" required>
+          </label>
+          <label class="check">
+            <input type="checkbox" name="activo" checked> Activo
+          </label>
+          <button type="submit" class="btn" id="btnServicio">Guardar servicio</button>
+          <button type="button" class="btn-secundario" id="btnCancelarServicio" hidden>Cancelar edición</button>
+        </form>
+      </div>
+      <div class="card" data-solo="CLIENTE ADMIN">
+        <h2>Servicios</h2>
+        <div id="listaServicios" class="grid-cards"></div>
+      </div>
+    </section>
+
+    <!-- USUARIOS -->
+    <section id="usuarios" class="panel">
+      <div class="card">
+        <h2 id="tituloUsuario">Nuevo usuario</h2>
+        <form id="formUsuario" class="form-grid" novalidate>
+          <label>Tipo
+            <select name="tipo" required></select>
+          </label>
+          <label>Nombre
+            <input type="text" name="nombre" required maxlength="50">
+          </label>
+          <label>Apellido
+            <input type="text" name="apellido" required maxlength="50">
+          </label>
+          <label>Teléfono
+            <input type="tel" name="numeroContacto" inputmode="numeric" maxlength="10" placeholder="Ej: 1134567890">
+          </label>
+          <label>Email
+            <input type="email" name="email" maxlength="50" required>
+          </label>
+          <label>Dirección (si atiende)
+            <input type="text" name="direccion" maxlength="100">
+          </label>
+          <label>Contraseña
+            <input type="password" name="password" minlength="6" maxlength="50" autocomplete="new-password" required>
+          </label>
+          <button type="submit" class="btn" id="btnUsuario">Guardar usuario</button>
+          <button type="button" class="btn-secundario" id="btnCancelarUsuario" hidden>Cancelar edición</button>
+        </form>
+      </div>
+      <div class="card">
+        <h2>Usuarios</h2>
+        <table>
+          <thead><tr><th>ID</th><th>Nombre</th><th>Tipo</th><th>Teléfono</th><th>Email</th><th>Estado</th><th></th></tr></thead>
+          <tbody id="tablaUsuarios"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- TIPOS DE USUARIO -->
+    <section id="tipos" class="panel">
+      <div class="card">
+        <h2>Nuevo tipo de usuario</h2>
+        <form id="formTipo" class="form-grid" novalidate>
+          <label>Descripción
+            <input type="text" name="descripcion" required maxlength="50">
+          </label>
+          <button type="submit" class="btn">Guardar tipo</button>
+        </form>
+      </div>
+      <div class="card">
+        <h2>Tipos de usuario</h2>
+        <table>
+          <thead><tr><th>ID</th><th>Descripción</th></tr></thead>
+          <tbody id="tablaTipos"></tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+
+  <dialog id="modalReprogramar" class="modal">
+    <form id="formReprogramar" novalidate>
+      <h2>Reprogramar turno</h2>
+      <p id="reprogramarResumen" class="ayuda"></p>
+      <label>Nueva fecha
+        <input type="date" name="fecha" required>
+      </label>
+      <div id="reprogramarHorarios" class="slots"></div>
+      <p id="reprogramarError" class="field-error" hidden></p>
+      <div class="modal-acciones">
+        <button type="button" class="btn-secundario" id="reprogramarCancelar">Volver</button>
+        <button type="submit" class="btn" id="reprogramarConfirmar" disabled>Confirmar nuevo horario</button>
+      </div>
+    </form>
+  </dialog>
+
+  <div id="toast" class="toast"></div>
+
+  <script src="app.js"></script>
+</body>
+</html>

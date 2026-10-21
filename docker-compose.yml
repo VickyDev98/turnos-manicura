@@ -1,0 +1,44 @@
+# Levanta todo el sistema: docker compose up --build
+#   Frontend: http://localhost:3000
+#   Backend:  http://localhost:8080
+#   MySQL:    localhost:3309 (usuario root, clave en .env)
+services:
+  mysql:
+    image: mysql:8
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-1234}
+    ports:
+      - "3309:3306"
+    volumes:
+      # Se ejecuta solo la primera vez, cuando el volumen está vacío
+      - ./scripts/Turnos.sql:/docker-entrypoint-initdb.d/Turnos.sql:ro
+      - mysql_data:/var/lib/mysql
+    healthcheck:
+      # 127.0.0.1 (TCP) y no el socket: el servidor temporal de arranque no acepta TCP,
+      # así no se marca "healthy" antes de que termine de cargarse Turnos.sql
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-uroot", "-p${MYSQL_ROOT_PASSWORD:-1234}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  backend:
+    build: ./backend
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:mysql://mysql:3306/TURNOS
+      SPRING_DATASOURCE_USERNAME: root
+      SPRING_DATASOURCE_PASSWORD: ${MYSQL_ROOT_PASSWORD:-1234}
+    ports:
+      - "8080:8080"
+    depends_on:
+      mysql:
+        condition: service_healthy
+
+  frontend:
+    build: ./frontend
+    ports:
+      - "3000:80"
+    depends_on:
+      - backend
+
+volumes:
+  mysql_data:
