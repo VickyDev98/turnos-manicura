@@ -15,11 +15,13 @@ import com.victoria.turnos_manicura.repository.UsuariosRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
+import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.server.ResponseStatusException;
 
@@ -51,6 +53,7 @@ class TurnosServiceTest {
     @Mock ServiciosRepository serviciosRepository;
     @Mock DisponibilidadService disponibilidadService;
     @Mock OfertaService ofertaService;
+    @Mock NotificacionesService notificaciones;
     @InjectMocks TurnosService service;
 
     private ServiciosModel servicio;
@@ -92,6 +95,14 @@ class TurnosServiceTest {
         assertEquals(5500, guardado.getPrecio());
         assertEquals(LocalTime.of(1, 0), guardado.getDuracion());
         verify(repository).save(guardado);
+        verify(notificaciones).turnoReservado(guardado);
+    }
+
+    @Test
+    void guardar_turnoInvalido_noAvisaANadie() {
+        assertThrows(ValidacionException.class, () -> service.guardar(turnoNuevo(horario(-1, 10, 0))));
+
+        verify(notificaciones, never()).turnoReservado(any());
     }
 
     @Test
@@ -235,6 +246,7 @@ class TurnosServiceTest {
         TurnosModel cancelado = service.cancelar(10L, sesion(CLIENTE, AuthService.ROL_CLIENTE));
 
         assertFalse(cancelado.isActivo());
+        verify(notificaciones).turnoCancelado(cancelado, (long) CLIENTE);
     }
 
     @Test
@@ -247,6 +259,7 @@ class TurnosServiceTest {
 
         assertEquals(HttpStatus.FORBIDDEN, e.getStatusCode());
         assertTrue(turno.isActivo());
+        verify(notificaciones, never()).turnoCancelado(any(), any());
     }
 
     @Test
@@ -298,6 +311,18 @@ class TurnosServiceTest {
         TurnosModel movido = service.reprogramar(10L, horario(4, 15, 0), sesion(CLIENTE, AuthService.ROL_CLIENTE));
 
         assertEquals(horario(4, 15, 0), movido.getDiaHorario());
+        verify(notificaciones).turnoReprogramado(movido, horario(3, 10, 0), (long) CLIENTE);
+    }
+
+    @Test
+    void reprogramar_vuelveAPedirElRecordatorio() {
+        TurnosModel turno = turnoExistente(10L, MANICURISTA, CLIENTE, horario(3, 10, 0), LocalTime.of(1, 0));
+        turno.setRecordatorioEnviado(true);
+        when(repository.findById(10L)).thenReturn(Optional.of(turno));
+
+        service.reprogramar(10L, horario(4, 15, 0), sesion(CLIENTE, AuthService.ROL_CLIENTE));
+
+        assertFalse(turno.isRecordatorioEnviado());
     }
 
     @Test
@@ -347,6 +372,38 @@ class TurnosServiceTest {
         assertEquals(3, service.listarPara(sesion(50, AuthService.ROL_ADMIN)).size());
         assertEquals(List.of(a, b), service.listarPara(sesion(1, AuthService.ROL_MANICURISTA)));
         assertEquals(List.of(a, c), service.listarPara(sesion(2, AuthService.ROL_CLIENTE)));
+    }
+
+    // ---------- paginaPara ----------
+
+    @Test
+    void paginaPara_cadaRolConsultaSoloLoSuyo() {
+        service.paginaPara(sesion(50, AuthService.ROL_ADMIN), null, 0, 20);
+        verify(repository).findAll(any(Pageable.class));
+
+        service.paginaPara(sesion(50, AuthService.ROL_ADMIN), 1, 0, 20);
+        verify(repository).findByIdManicurista(eq(1), any(Pageable.class));
+
+        // La manicurista ignora el filtro: siempre ve los suyos
+        service.paginaPara(sesion(4, AuthService.ROL_MANICURISTA), 1, 0, 20);
+        verify(repository).findByIdManicurista(eq(4), any(Pageable.class));
+
+        service.paginaPara(sesion(2, AuthService.ROL_CLIENTE), null, 0, 20);
+        verify(repository).findByIdCliente(eq(2), any(Pageable.class));
+
+        service.paginaPara(sesion(2, AuthService.ROL_CLIENTE), 1, 0, 20);
+        verify(repository).findByIdClienteAndIdManicurista(eq(2), eq(1), any(Pageable.class));
+    }
+
+    @Test
+    void paginaPara_acotaElTamanioYLaPagina() {
+        ArgumentCaptor<Pageable> captor = ArgumentCaptor.forClass(Pageable.class);
+
+        service.paginaPara(sesion(50, AuthService.ROL_ADMIN), null, -3, 100000);
+
+        verify(repository).findAll(captor.capture());
+        assertEquals(0, captor.getValue().getPageNumber());
+        assertEquals(100, captor.getValue().getPageSize());
     }
 
     // ---------- finDe ----------
