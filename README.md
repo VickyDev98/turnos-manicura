@@ -35,7 +35,7 @@ También podés crear tu propia cuenta de cliente o manicurista desde **"¿No te
 - **Horarios de trabajo y bloqueos** por manicurista, con repetición `UNICA`, `MES` (todos los mismos días de la semana del mes) o `SIEMPRE`.
 - **Servicios por manicurista:** cada una ofrece servicios del catálogo con **su propio precio y duración**. El turno guarda el precio y la duración con los que se reservó, así cambios posteriores no alteran turnos viejos.
 - **Agenda visual del día** (ocupado / libre) y **calendario** para el cliente.
-- **Cancelar y reprogramar** turnos.
+- **Cancelar y reprogramar** turnos. Un cliente solo puede cancelar con **24 hs de anticipación** (`app.turnos.horas-minimas-cancelacion`, 0 = sin límite); la manicurista y el admin pueden cancelar siempre.
 - **Avisos y recordatorios por mail:** al reservar, cancelar o reprogramar un turno se avisa a la otra parte (manicurista o cliente), y el cliente recibe un **recordatorio 24 hs antes**, una sola vez por horario. Los mails salen en segundo plano y, si fallan, no afectan la operación. Si no hay servidor de correo configurado, no se manda nada. Ver [Avisos por mail](#-avisos-por-mail).
 - **Administración de usuarios** con baja lógica: un usuario dado de baja no puede iniciar sesión y se le cierran las sesiones abiertas.
 - **Manejo centralizado de errores:** los mensajes de validación llegan al frontend y se muestran al usuario.

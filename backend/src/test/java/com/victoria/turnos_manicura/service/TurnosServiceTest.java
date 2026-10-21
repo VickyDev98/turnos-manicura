@@ -23,6 +23,7 @@ import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
 import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpStatus;
+import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.time.LocalDate;
@@ -278,6 +279,53 @@ class TurnosServiceTest {
                 () -> service.cancelar(10L, sesion(CLIENTE, AuthService.ROL_CLIENTE)));
 
         assertEquals(HttpStatus.NOT_FOUND, e.getStatusCode());
+    }
+
+    // ---------- cancelar: anticipación mínima ----------
+
+    @Test
+    void cancelar_clienteConMenosAnticipacionDeLaMinima_lanzaBadRequest() {
+        ReflectionTestUtils.setField(service, "horasMinimasCancelacion", 24L);
+        TurnosModel turno = turnoExistente(10L, MANICURISTA, CLIENTE, LocalDateTime.now().plusHours(5), LocalTime.of(1, 0));
+        when(repository.findById(10L)).thenReturn(Optional.of(turno));
+
+        ResponseStatusException e = assertThrows(ResponseStatusException.class,
+                () -> service.cancelar(10L, sesion(CLIENTE, AuthService.ROL_CLIENTE)));
+
+        assertEquals(HttpStatus.BAD_REQUEST, e.getStatusCode());
+        assertTrue(e.getReason().contains("24 hs"));
+        assertTrue(turno.isActivo());
+        verify(repository, never()).save(any());
+        verify(notificaciones, never()).turnoCancelado(any(), any());
+    }
+
+    @Test
+    void cancelar_clienteConAnticipacionSuficiente_loCancela() {
+        ReflectionTestUtils.setField(service, "horasMinimasCancelacion", 24L);
+        TurnosModel turno = turnoExistente(10L, MANICURISTA, CLIENTE, LocalDateTime.now().plusHours(30), LocalTime.of(1, 0));
+        when(repository.findById(10L)).thenReturn(Optional.of(turno));
+
+        assertFalse(service.cancelar(10L, sesion(CLIENTE, AuthService.ROL_CLIENTE)).isActivo());
+    }
+
+    @Test
+    void cancelar_manicuristaYAdminPuedenCancelarSinAnticipacion() {
+        ReflectionTestUtils.setField(service, "horasMinimasCancelacion", 24L);
+        TurnosModel delaManicurista = turnoExistente(10L, MANICURISTA, CLIENTE, LocalDateTime.now().plusHours(2), LocalTime.of(1, 0));
+        TurnosModel delAdmin = turnoExistente(11L, MANICURISTA, CLIENTE, LocalDateTime.now().plusHours(2), LocalTime.of(1, 0));
+        when(repository.findById(10L)).thenReturn(Optional.of(delaManicurista));
+        when(repository.findById(11L)).thenReturn(Optional.of(delAdmin));
+
+        assertFalse(service.cancelar(10L, sesion(MANICURISTA, AuthService.ROL_MANICURISTA)).isActivo());
+        assertFalse(service.cancelar(11L, sesion(50, AuthService.ROL_ADMIN)).isActivo());
+    }
+
+    @Test
+    void cancelar_conLaMinimaEnCero_noHayLimite() {
+        TurnosModel turno = turnoExistente(10L, MANICURISTA, CLIENTE, LocalDateTime.now().plusHours(1), LocalTime.of(1, 0));
+        when(repository.findById(10L)).thenReturn(Optional.of(turno));
+
+        assertFalse(service.cancelar(10L, sesion(CLIENTE, AuthService.ROL_CLIENTE)).isActivo());
     }
 
     @Test
