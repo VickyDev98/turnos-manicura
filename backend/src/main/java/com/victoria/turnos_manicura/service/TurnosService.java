@@ -13,6 +13,8 @@ import com.victoria.turnos_manicura.repository.TurnosRepository;
 import com.victoria.turnos_manicura.repository.UsuariosRepository;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Isolation;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.time.Duration;
@@ -22,6 +24,7 @@ import java.time.LocalTime;
 import java.util.Comparator;
 import java.util.List;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 @Service
 
@@ -81,8 +84,10 @@ public class TurnosService {
         return repository.findAll();
     }
 
+    @Transactional(isolation = Isolation.READ_COMMITTED)
     public TurnosModel guardar(TurnosModel turno) {
 
+        bloquearAgendas(turno.getIdManicurista(), turno.getIdCliente());
         validarUsuario(turno.getIdManicurista(), "MANICURISTA", "idManicurista", "una manicurista");
         validarUsuario(turno.getIdCliente(), "CLIENTE", "idCliente", "un cliente");
 
@@ -108,8 +113,10 @@ public class TurnosService {
     }
 
     // Mueve un turno a otro día u horario: misma manicurista, mismo servicio, mismo precio y duración
+    @Transactional(isolation = Isolation.READ_COMMITTED)
     public TurnosModel reprogramar(Long id, LocalDateTime nuevoHorario, AuthService.Sesion sesion) {
         TurnosModel turno = turnoPropio(id, sesion, "reprogramar");
+        bloquearAgendas(turno.getIdManicurista(), turno.getIdCliente());
         if (!turno.isActivo()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "No se puede reprogramar un turno cancelado");
         }
@@ -184,6 +191,14 @@ public class TurnosService {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "No podés " + accion + " un turno de otra persona");
         }
         return turno;
+    }
+
+    // Evita la doble reserva: dos pedidos a la vez para la misma manicurista o el mismo cliente no pueden
+    // validar el choque en paralelo. Se bloquean sus filas de usuario hasta el commit de la transacción
+    // (siempre en orden de id, para que dos pedidos cruzados no se traben entre sí)
+    private void bloquearAgendas(int idManicurista, int idCliente) {
+        Stream.of(idManicurista, idCliente).distinct().sorted()
+                .forEach(id -> usuariosRepository.findByIdForUpdate((long) id));
     }
 
     // Reglas del horario de un turno (nuevo o reprogramado). excluirId = el propio turno al reprogramar

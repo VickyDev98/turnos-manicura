@@ -95,6 +95,17 @@ class TurnosServiceTest {
     }
 
     @Test
+    void guardar_bloqueaLaAgendaDeManicuristaYClienteAntesDeValidarElChoque() {
+        service.guardar(turnoNuevo(horario(3, 10, 0)));
+
+        // Se bloquean en orden de id, para que dos reservas cruzadas no se traben entre sí
+        org.mockito.InOrder orden = org.mockito.Mockito.inOrder(usuariosRepository, repository);
+        orden.verify(usuariosRepository).findByIdForUpdate((long) MANICURISTA);
+        orden.verify(usuariosRepository).findByIdForUpdate((long) CLIENTE);
+        orden.verify(repository).save(any(TurnosModel.class));
+    }
+
+    @Test
     void guardar_ignoraLosSegundosDelHorario() {
         TurnosModel guardado = service.guardar(turnoNuevo(horario(3, 10, 0).withSecond(30)));
 
