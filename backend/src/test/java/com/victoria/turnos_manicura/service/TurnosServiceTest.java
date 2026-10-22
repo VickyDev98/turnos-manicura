@@ -407,6 +407,57 @@ class TurnosServiceTest {
         assertEquals(HttpStatus.BAD_REQUEST, e.getStatusCode());
     }
 
+    // ---------- reprogramar: anticipación mínima ----------
+
+    @Test
+    void reprogramar_clienteConMenosAnticipacionDeLaMinima_lanzaBadRequest() {
+        ReflectionTestUtils.setField(service, "horasMinimasCancelacion", 24L);
+        TurnosModel turno = turnoExistente(10L, MANICURISTA, CLIENTE, LocalDateTime.now().plusHours(5), LocalTime.of(1, 0));
+        LocalDateTime original = turno.getDiaHorario();
+        when(repository.findById(10L)).thenReturn(Optional.of(turno));
+
+        ResponseStatusException e = assertThrows(ResponseStatusException.class,
+                () -> service.reprogramar(10L, horario(4, 15, 0), sesion(CLIENTE, AuthService.ROL_CLIENTE)));
+
+        assertEquals(HttpStatus.BAD_REQUEST, e.getStatusCode());
+        assertTrue(e.getReason().contains("reprogramar"));
+        assertTrue(e.getReason().contains("24 hs"));
+        assertEquals(original, turno.getDiaHorario());
+        verify(repository, never()).save(any());
+        verify(notificaciones, never()).turnoReprogramado(any(), any(), any());
+    }
+
+    @Test
+    void reprogramar_clienteConAnticipacionSuficiente_mueveElTurno() {
+        ReflectionTestUtils.setField(service, "horasMinimasCancelacion", 24L);
+        TurnosModel turno = turnoExistente(10L, MANICURISTA, CLIENTE, horario(3, 10, 0), LocalTime.of(1, 0));
+        when(repository.findById(10L)).thenReturn(Optional.of(turno));
+
+        TurnosModel movido = service.reprogramar(10L, horario(4, 15, 0), sesion(CLIENTE, AuthService.ROL_CLIENTE));
+
+        assertEquals(horario(4, 15, 0), movido.getDiaHorario());
+    }
+
+    @Test
+    void reprogramar_manicuristaYAdminPuedenReprogramarSinAnticipacion() {
+        ReflectionTestUtils.setField(service, "horasMinimasCancelacion", 24L);
+        TurnosModel delaManicurista = turnoExistente(10L, MANICURISTA, CLIENTE, LocalDateTime.now().plusHours(2), LocalTime.of(1, 0));
+        TurnosModel delAdmin = turnoExistente(11L, MANICURISTA, CLIENTE, LocalDateTime.now().plusHours(2), LocalTime.of(1, 0));
+        when(repository.findById(10L)).thenReturn(Optional.of(delaManicurista));
+        when(repository.findById(11L)).thenReturn(Optional.of(delAdmin));
+
+        assertDoesNotThrow(() -> service.reprogramar(10L, horario(4, 15, 0), sesion(MANICURISTA, AuthService.ROL_MANICURISTA)));
+        assertDoesNotThrow(() -> service.reprogramar(11L, horario(4, 16, 0), sesion(50, AuthService.ROL_ADMIN)));
+    }
+
+    @Test
+    void reprogramar_conLaMinimaEnCero_noHayLimite() {
+        TurnosModel turno = turnoExistente(10L, MANICURISTA, CLIENTE, LocalDateTime.now().plusHours(1), LocalTime.of(1, 0));
+        when(repository.findById(10L)).thenReturn(Optional.of(turno));
+
+        assertDoesNotThrow(() -> service.reprogramar(10L, horario(4, 15, 0), sesion(CLIENTE, AuthService.ROL_CLIENTE)));
+    }
+
     @Test
     void reprogramar_enHorarioOcupado_lanzaValidacion() {
         TurnosModel turno = turnoExistente(10L, MANICURISTA, CLIENTE, horario(3, 10, 0), LocalTime.of(1, 0));
