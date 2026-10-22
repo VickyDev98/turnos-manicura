@@ -1,6 +1,8 @@
 package com.victoria.turnos_manicura.model;
 
 import com.fasterxml.jackson.annotation.JsonFormat;
+import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import jakarta.persistence.*;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Positive;
@@ -41,4 +43,17 @@ public class TurnosModel {
     @Column(name = "dia_horario")
     private LocalDateTime diaHorario;
     private boolean activo;
+    // Ya se le mandó al cliente el recordatorio de este horario (al reprogramar vuelve a false). Solo lo maneja el backend
+    @JsonIgnore
+    @Column(name = "recordatorio_enviado", nullable = false)
+    private boolean recordatorioEnviado;
+
+    // PROXIMO, REALIZADO (activo y su horario ya pasó) o CANCELADO. Se calcula, no se guarda
+    @JsonProperty(access = JsonProperty.Access.READ_ONLY)
+    public String getEstado() {
+        if (!activo) {
+            return "CANCELADO";
+        }
+        return diaHorario != null && diaHorario.isBefore(LocalDateTime.now()) ? "REALIZADO" : "PROXIMO";
+    }
 }

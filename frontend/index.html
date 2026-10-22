@@ -186,6 +186,13 @@
       <div class="card">
         <div class="card-head">
           <h2>Turnos</h2>
+          <label class="inline">Ver
+            <select id="filtroMomento">
+              <option value="TODOS">Todos</option>
+              <option value="PROXIMOS">Próximos</option>
+              <option value="HISTORIAL">Historial</option>
+            </select>
+          </label>
           <label class="inline" data-solo="CLIENTE ADMIN">Filtrar por manicurista
             <select id="filtroManicurista"><option value="">Todas</option></select>
           </label>
@@ -194,6 +201,11 @@
           <thead><tr><th>Día y horario</th><th>Servicio</th><th>Manicurista</th><th>Cliente</th><th>Estado</th><th></th></tr></thead>
           <tbody id="tablaTurnos"></tbody>
         </table>
+        <div id="paginadorTurnos" class="card-head" hidden>
+          <button type="button" class="btn" id="paginaAnterior">Anterior</button>
+          <span id="paginadorInfo"></span>
+          <button type="button" class="btn" id="paginaSiguiente">Siguiente</button>
+        </div>
       </div>
     </section>
 
