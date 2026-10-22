@@ -50,7 +50,7 @@ public class TurnosService {
     // Tope de turnos por página, para que no se pueda pedir todo de una vez con un size enorme
     private static final int TAMANIO_MAXIMO_PAGINA = 100;
 
-    // Anticipación mínima con la que un cliente puede cancelar su turno (0 = sin límite)
+    // Anticipación mínima con la que un cliente puede cancelar o reprogramar su turno (0 = sin límite)
     @Value("${app.turnos.horas-minimas-cancelacion:24}")
     private long horasMinimasCancelacion;
 
@@ -183,6 +183,7 @@ public class TurnosService {
         if (turno.getDiaHorario().isBefore(LocalDateTime.now())) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "No se puede reprogramar un turno que ya pasó");
         }
+        exigirAnticipacion(turno, sesion, "reprogramar");
 
         // Si la manicurista se dio de baja no se puede mover; el servicio y el precio se mantienen como se reservaron
         validarUsuario(turno.getIdManicurista(), "MANICURISTA", "idManicurista", "una manicurista");
@@ -207,18 +208,23 @@ public class TurnosService {
         if (turno.getDiaHorario().isBefore(LocalDateTime.now())) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "No se puede cancelar un turno que ya pasó");
         }
-        // Los clientes cancelan con anticipación; la manicurista y el admin pueden cancelar siempre (urgencias)
-        if (AuthService.ROL_CLIENTE.equals(sesion.getRol())
-                && turno.getDiaHorario().isBefore(LocalDateTime.now().plusHours(horasMinimasCancelacion))) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Solo se puede cancelar con al menos "
-                    + horasMinimasCancelacion + " hs de anticipación. Comunicate con la manicurista");
-        }
+        exigirAnticipacion(turno, sesion, "cancelar");
 
         turno.setActivo(false);
 
         TurnosModel guardado = repository.save(turno);
         notificaciones.turnoCancelado(guardado, sesion.getIdUsuario());
         return guardado;
+    }
+
+    // Los clientes cancelan o reprograman con anticipación (mover un turno a último momento libera el horario igual
+    // que cancelarlo); la manicurista y el admin pueden siempre (urgencias). Se mide contra el horario actual del turno
+    private void exigirAnticipacion(TurnosModel turno, AuthService.Sesion sesion, String accion) {
+        if (AuthService.ROL_CLIENTE.equals(sesion.getRol())
+                && turno.getDiaHorario().isBefore(LocalDateTime.now().plusHours(horasMinimasCancelacion))) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Solo se puede " + accion + " con al menos "
+                    + horasMinimasCancelacion + " hs de anticipación. Comunicate con la manicurista");
+        }
     }
 
     // Tramos ocupados de una manicurista en un día, ordenados por hora de inicio
