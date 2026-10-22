@@ -3,6 +3,7 @@ package com.victoria.turnos_manicura.service;
 import com.victoria.turnos_manicura.dto.AgendaBloque;
 import com.victoria.turnos_manicura.dto.Intervalo;
 import com.victoria.turnos_manicura.exception.ValidacionException;
+import com.victoria.turnos_manicura.model.FiltroMomento;
 import com.victoria.turnos_manicura.model.ServicioManicuristaModel;
 import com.victoria.turnos_manicura.model.ServiciosModel;
 import com.victoria.turnos_manicura.model.TurnosModel;
@@ -11,16 +12,25 @@ import com.victoria.turnos_manicura.repository.ServiciosRepository;
 import com.victoria.turnos_manicura.repository.TiposUsuarioRepository;
 import com.victoria.turnos_manicura.repository.TurnosRepository;
 import com.victoria.turnos_manicura.repository.UsuariosRepository;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
+import org.springframework.data.jpa.domain.Specification;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Isolation;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
+import jakarta.persistence.criteria.Predicate;
+
 import java.time.Duration;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
+import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.stream.Collectors;
@@ -37,16 +47,26 @@ public class TurnosService {
     // Duración máxima de un servicio (ver ServiciosService): sirve para acotar la búsqueda de turnos que se pisan
     private static final Duration DURACION_MAXIMA = Duration.ofHours(8);
 
+    // Tope de turnos por página, para que no se pueda pedir todo de una vez con un size enorme
+    private static final int TAMANIO_MAXIMO_PAGINA = 100;
+
+    // Anticipación mínima con la que un cliente puede cancelar su turno (0 = sin límite)
+    @Value("${app.turnos.horas-minimas-cancelacion:24}")
+    private long horasMinimasCancelacion;
+
     private final TurnosRepository repository;
     private final UsuariosRepository usuariosRepository;
     private final TiposUsuarioRepository tiposRepository;
     private final ServiciosRepository serviciosRepository;
     private final DisponibilidadService disponibilidadService;
     private final OfertaService ofertaService;
+    private final NotificacionesService notificaciones;
 
     public TurnosService(TurnosRepository repository, UsuariosRepository usuariosRepository,
                          TiposUsuarioRepository tiposRepository, ServiciosRepository serviciosRepository,
-                         DisponibilidadService disponibilidadService, OfertaService ofertaService) {
+                         DisponibilidadService disponibilidadService, OfertaService ofertaService,
+                         NotificacionesService notificaciones) {
+        this.notificaciones = notificaciones;
         this.ofertaService = ofertaService;
         this.disponibilidadService = disponibilidadService;
         this.repository = repository;
@@ -80,6 +100,43 @@ public class TurnosService {
                 .collect(Collectors.toList());
     }
 
+    // Misma visibilidad que listarPara, pero de a una página y con filtros opcionales:
+    // idManicurista (una manicurista siempre ve solo los suyos) y momento (próximos o historial).
+    // Los próximos van del más cercano al más lejano; el resto, del más reciente al más antiguo
+    public Page<TurnosModel> paginaPara(AuthService.Sesion sesion, Integer idManicurista, FiltroMomento momento,
+                                        int pagina, int tamanio) {
+        int tamanioFinal = Math.min(Math.max(tamanio, 1), TAMANIO_MAXIMO_PAGINA);
+        Sort.Direction sentido = momento == FiltroMomento.PROXIMOS ? Sort.Direction.ASC : Sort.Direction.DESC;
+        Pageable pageable = PageRequest.of(Math.max(pagina, 0), tamanioFinal,
+                Sort.by(sentido, "diaHorario").and(Sort.by(sentido, "id")));
+
+        int id = sesion.getIdUsuario().intValue();
+        boolean manicurista = AuthService.ROL_MANICURISTA.equals(sesion.getRol());
+        boolean cliente = AuthService.ROL_CLIENTE.equals(sesion.getRol());
+        LocalDateTime ahora = LocalDateTime.now();
+
+        Specification<TurnosModel> filtros = (turno, consulta, cb) -> {
+            List<Predicate> condiciones = new ArrayList<>();
+            if (manicurista) {
+                condiciones.add(cb.equal(turno.get("idManicurista"), id));
+            } else if (idManicurista != null) {
+                condiciones.add(cb.equal(turno.get("idManicurista"), idManicurista));
+            }
+            if (cliente) {
+                condiciones.add(cb.equal(turno.get("idCliente"), id));
+            }
+            if (momento == FiltroMomento.PROXIMOS) {
+                condiciones.add(cb.isTrue(turno.get("activo")));
+                condiciones.add(cb.greaterThanOrEqualTo(turno.<LocalDateTime>get("diaHorario"), ahora));
+            } else if (momento == FiltroMomento.HISTORIAL) {
+                condiciones.add(cb.or(cb.isFalse(turno.get("activo")),
+                        cb.lessThan(turno.<LocalDateTime>get("diaHorario"), ahora)));
+            }
+            return cb.and(condiciones.toArray(new Predicate[0]));
+        };
+        return repository.findAll(filtros, pageable);
+    }
+
     public List<TurnosModel> listar() {
         return repository.findAll();
     }
@@ -108,8 +165,11 @@ public class TurnosService {
         validarHorario(turno, servicio, null);
 
         turno.setActivo(true);
+        turno.setRecordatorioEnviado(false);
 
-        return repository.save(turno);
+        TurnosModel guardado = repository.save(turno);
+        notificaciones.turnoReservado(guardado);
+        return guardado;
     }
 
     // Mueve un turno a otro día u horario: misma manicurista, mismo servicio, mismo precio y duración
@@ -128,10 +188,15 @@ public class TurnosService {
         validarUsuario(turno.getIdManicurista(), "MANICURISTA", "idManicurista", "una manicurista");
         ServiciosModel servicio = serviciosRepository.findById((long) turno.getIdServicio()).orElse(null);
 
+        LocalDateTime horarioAnterior = turno.getDiaHorario();
         turno.setDiaHorario(nuevoHorario.withSecond(0).withNano(0));
         validarHorario(turno, servicio, turno.getId());
+        // El nuevo horario vuelve a tener su recordatorio
+        turno.setRecordatorioEnviado(false);
 
-        return repository.save(turno);
+        TurnosModel guardado = repository.save(turno);
+        notificaciones.turnoReprogramado(guardado, horarioAnterior, sesion.getIdUsuario());
+        return guardado;
     }
 
     public TurnosModel cancelar(Long id, AuthService.Sesion sesion) {
@@ -142,10 +207,18 @@ public class TurnosService {
         if (turno.getDiaHorario().isBefore(LocalDateTime.now())) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "No se puede cancelar un turno que ya pasó");
         }
+        // Los clientes cancelan con anticipación; la manicurista y el admin pueden cancelar siempre (urgencias)
+        if (AuthService.ROL_CLIENTE.equals(sesion.getRol())
+                && turno.getDiaHorario().isBefore(LocalDateTime.now().plusHours(horasMinimasCancelacion))) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Solo se puede cancelar con al menos "
+                    + horasMinimasCancelacion + " hs de anticipación. Comunicate con la manicurista");
+        }
 
         turno.setActivo(false);
 
-        return repository.save(turno);
+        TurnosModel guardado = repository.save(turno);
+        notificaciones.turnoCancelado(guardado, sesion.getIdUsuario());
+        return guardado;
     }
 
     // Tramos ocupados de una manicurista en un día, ordenados por hora de inicio

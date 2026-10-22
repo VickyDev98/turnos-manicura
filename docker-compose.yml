@@ -27,6 +27,14 @@ services:
       SPRING_DATASOURCE_URL: jdbc:mysql://mysql:3306/TURNOS
       SPRING_DATASOURCE_USERNAME: root
       SPRING_DATASOURCE_PASSWORD: ${MYSQL_ROOT_PASSWORD:?Definí MYSQL_ROOT_PASSWORD en un archivo .env (copiá .env.example)}
+      # Avisos por mail: vacío = no se manda nada. Ver .env.example
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      SMTP_AUTH: ${SMTP_AUTH:-false}
+      SMTP_STARTTLS: ${SMTP_STARTTLS:-false}
+      SMTP_REMITENTE: ${SMTP_REMITENTE:-turnos@manicura.local}
     ports:
       - "8080:8080"
     depends_on:
@@ -39,6 +47,14 @@ services:
       - "3000:80"
     depends_on:
       - backend
+
+  # Casilla de correo de prueba: atrapa los mails sin mandarlos a nadie. Solo con: docker compose --profile correo up
+  #   Bandeja: http://localhost:8025 (poné SMTP_HOST=mailpit y SMTP_PORT=1025 en .env)
+  mailpit:
+    image: axllent/mailpit
+    profiles: ["correo"]
+    ports:
+      - "8025:8025"
 
 volumes:
   mysql_data:
