@@ -3,6 +3,7 @@ package com.victoria.turnos_manicura.service;
 import com.victoria.turnos_manicura.dto.AgendaBloque;
 import com.victoria.turnos_manicura.dto.Intervalo;
 import com.victoria.turnos_manicura.exception.ValidacionException;
+import com.victoria.turnos_manicura.model.FiltroMomento;
 import com.victoria.turnos_manicura.model.ServicioManicuristaModel;
 import com.victoria.turnos_manicura.model.ServiciosModel;
 import com.victoria.turnos_manicura.model.TurnosModel;
@@ -16,16 +17,20 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
+import org.springframework.data.jpa.domain.Specification;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Isolation;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
+import jakarta.persistence.criteria.Predicate;
+
 import java.time.Duration;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
+import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.stream.Collectors;
@@ -95,25 +100,41 @@ public class TurnosService {
                 .collect(Collectors.toList());
     }
 
-    // Misma visibilidad que listarPara, pero de a una página, con los más recientes primero.
-    // idManicurista es un filtro opcional (una manicurista siempre ve solo los suyos)
-    public Page<TurnosModel> paginaPara(AuthService.Sesion sesion, Integer idManicurista, int pagina, int tamanio) {
+    // Misma visibilidad que listarPara, pero de a una página y con filtros opcionales:
+    // idManicurista (una manicurista siempre ve solo los suyos) y momento (próximos o historial).
+    // Los próximos van del más cercano al más lejano; el resto, del más reciente al más antiguo
+    public Page<TurnosModel> paginaPara(AuthService.Sesion sesion, Integer idManicurista, FiltroMomento momento,
+                                        int pagina, int tamanio) {
         int tamanioFinal = Math.min(Math.max(tamanio, 1), TAMANIO_MAXIMO_PAGINA);
+        Sort.Direction sentido = momento == FiltroMomento.PROXIMOS ? Sort.Direction.ASC : Sort.Direction.DESC;
         Pageable pageable = PageRequest.of(Math.max(pagina, 0), tamanioFinal,
-                Sort.by(Sort.Direction.DESC, "diaHorario").and(Sort.by(Sort.Direction.DESC, "id")));
+                Sort.by(sentido, "diaHorario").and(Sort.by(sentido, "id")));
 
         int id = sesion.getIdUsuario().intValue();
-        if (AuthService.ROL_MANICURISTA.equals(sesion.getRol())) {
-            return repository.findByIdManicurista(id, pageable);
-        }
-        if (AuthService.ROL_CLIENTE.equals(sesion.getRol())) {
-            return idManicurista == null
-                    ? repository.findByIdCliente(id, pageable)
-                    : repository.findByIdClienteAndIdManicurista(id, idManicurista, pageable);
-        }
-        return idManicurista == null
-                ? repository.findAll(pageable)
-                : repository.findByIdManicurista(idManicurista, pageable);
+        boolean manicurista = AuthService.ROL_MANICURISTA.equals(sesion.getRol());
+        boolean cliente = AuthService.ROL_CLIENTE.equals(sesion.getRol());
+        LocalDateTime ahora = LocalDateTime.now();
+
+        Specification<TurnosModel> filtros = (turno, consulta, cb) -> {
+            List<Predicate> condiciones = new ArrayList<>();
+            if (manicurista) {
+                condiciones.add(cb.equal(turno.get("idManicurista"), id));
+            } else if (idManicurista != null) {
+                condiciones.add(cb.equal(turno.get("idManicurista"), idManicurista));
+            }
+            if (cliente) {
+                condiciones.add(cb.equal(turno.get("idCliente"), id));
+            }
+            if (momento == FiltroMomento.PROXIMOS) {
+                condiciones.add(cb.isTrue(turno.get("activo")));
+                condiciones.add(cb.greaterThanOrEqualTo(turno.<LocalDateTime>get("diaHorario"), ahora));
+            } else if (momento == FiltroMomento.HISTORIAL) {
+                condiciones.add(cb.or(cb.isFalse(turno.get("activo")),
+                        cb.lessThan(turno.<LocalDateTime>get("diaHorario"), ahora)));
+            }
+            return cb.and(condiciones.toArray(new Predicate[0]));
+        };
+        return repository.findAll(filtros, pageable);
     }
 
     public List<TurnosModel> listar() {

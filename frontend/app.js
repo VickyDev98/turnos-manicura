@@ -599,10 +599,18 @@ function renderMisTurnos() {
   }).join('');
 }
 
+// Estado que calcula el backend: PROXIMO (activo y por venir), REALIZADO (activo y ya pasó) o CANCELADO
+const ESTADOS_TURNO = {
+  PROXIMO: { texto: 'Próximo', clase: 'on' },
+  REALIZADO: { texto: 'Realizado', clase: 'done' },
+  CANCELADO: { texto: 'Cancelado', clase: 'off' },
+};
+
 // Pide la página de la tabla (ya filtrada y ordenada por el backend). El admin no baja la lista completa
 async function cargarTurnos(pagina = state.pagina.number) {
   const filtro = Number($('#filtroManicurista').value) || null;
-  const query = `page=${pagina}&size=${TURNOS_POR_PAGINA}${filtro ? `&idManicurista=${filtro}` : ''}`;
+  const momento = $('#filtroMomento').value;
+  const query = `page=${pagina}&size=${TURNOS_POR_PAGINA}&momento=${momento}${filtro ? `&idManicurista=${filtro}` : ''}`;
   const pedidos = [get(`/turnos/pagina?${query}`)];
   if (state.sesion?.rol !== 'ADMIN') pedidos.push(get('/turnos'));
   const [paginaNueva, todos] = await Promise.all(pedidos);
@@ -641,8 +649,8 @@ function renderTurnos() {
       <td>${esc(servicio?.nombre ?? '—')}</td>
       <td>${esc(nombreCompleto(usuarioPorId(t.idManicurista)) || `#${t.idManicurista}`)}</td>
       <td>${esc(nombreCompleto(usuarioPorId(t.idCliente)) || `#${t.idCliente}`)}</td>
-      <td><span class="badge ${t.activo ? 'on' : 'off'}">${t.activo ? 'Activo' : 'Cancelado'}</span></td>
-      <td class="acciones">${t.activo ? `${fechaDeBackend(t.diaHorario) > new Date() ? `<button class="btn-link editar" data-reprogramar="${t.id}">Reprogramar</button>` : ""}<button class="btn-link" data-cancelar="${t.id}">Cancelar</button>` : ""}</td>
+      <td><span class="badge ${ESTADOS_TURNO[t.estado].clase}">${ESTADOS_TURNO[t.estado].texto}</span></td>
+      <td class="acciones">${t.estado === 'PROXIMO' ? `<button class="btn-link editar" data-reprogramar="${t.id}">Reprogramar</button><button class="btn-link" data-cancelar="${t.id}">Cancelar</button>` : ""}</td>
     </tr>`;
   }).join('');
 }
@@ -1148,7 +1156,9 @@ $('#formTipo').addEventListener('submit', (e) => {
   });
 });
 
-$('#filtroManicurista').addEventListener('change', () => cargarTurnos(0).catch((err) => toast(err.message, true)));
+for (const filtro of ['#filtroManicurista', '#filtroMomento']) {
+  $(filtro).addEventListener('change', () => cargarTurnos(0).catch((err) => toast(err.message, true)));
+}
 
 // ---------- Tabs ----------
 

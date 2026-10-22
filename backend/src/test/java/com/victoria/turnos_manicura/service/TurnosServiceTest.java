@@ -3,6 +3,7 @@ package com.victoria.turnos_manicura.service;
 import com.victoria.turnos_manicura.dto.AgendaBloque;
 import com.victoria.turnos_manicura.dto.Intervalo;
 import com.victoria.turnos_manicura.exception.ValidacionException;
+import com.victoria.turnos_manicura.model.FiltroMomento;
 import com.victoria.turnos_manicura.model.ServicioManicuristaModel;
 import com.victoria.turnos_manicura.model.ServiciosModel;
 import com.victoria.turnos_manicura.model.TiposUsuarioModel;
@@ -12,6 +13,10 @@ import com.victoria.turnos_manicura.repository.ServiciosRepository;
 import com.victoria.turnos_manicura.repository.TiposUsuarioRepository;
 import com.victoria.turnos_manicura.repository.TurnosRepository;
 import com.victoria.turnos_manicura.repository.UsuariosRepository;
+import jakarta.persistence.criteria.CriteriaBuilder;
+import jakarta.persistence.criteria.CriteriaQuery;
+import jakarta.persistence.criteria.Path;
+import jakarta.persistence.criteria.Root;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -22,6 +27,8 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
+import org.springframework.data.jpa.domain.Specification;
 import org.springframework.http.HttpStatus;
 import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.web.server.ResponseStatusException;
@@ -29,12 +36,16 @@ import org.springframework.web.server.ResponseStatusException;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.mock;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -424,34 +435,111 @@ class TurnosServiceTest {
 
     // ---------- paginaPara ----------
 
+    private final Map<String, Path<Object>> campos = new HashMap<>();
+    private CriteriaBuilder cb;
+    private Pageable pageableUsado;
+
+    // Ejecuta paginaPara y evalúa el filtro que armó contra un CriteriaBuilder simulado (quedan registradas las condiciones)
+    @SuppressWarnings({"unchecked", "rawtypes"})
+    private void paginar(AuthService.Sesion sesion, Integer idManicurista, FiltroMomento momento) {
+        ArgumentCaptor<Specification> filtro = ArgumentCaptor.forClass(Specification.class);
+        ArgumentCaptor<Pageable> pageable = ArgumentCaptor.forClass(Pageable.class);
+
+        service.paginaPara(sesion, idManicurista, momento, 0, 20);
+
+        verify(repository).findAll(filtro.capture(), pageable.capture());
+        pageableUsado = pageable.getValue();
+        // Los campos se crean antes de verificar: crear un mock en medio de un verify(...) rompe a Mockito
+        for (String nombre : List.of("idManicurista", "idCliente", "activo", "diaHorario")) {
+            campos.put(nombre, mock(Path.class));
+        }
+        Root<TurnosModel> root = mock(Root.class);
+        when(root.get(anyString())).thenAnswer(i -> campos.computeIfAbsent(i.getArgument(0), n -> mock(Path.class)));
+        cb = mock(CriteriaBuilder.class);
+        filtro.getValue().toPredicate(root, mock(CriteriaQuery.class), cb);
+    }
+
+    @SuppressWarnings("unchecked")
+    private <T> Path<T> campo(String nombre) {
+        return (Path<T>) campos.computeIfAbsent(nombre, n -> mock(Path.class));
+    }
+
     @Test
-    void paginaPara_cadaRolConsultaSoloLoSuyo() {
-        service.paginaPara(sesion(50, AuthService.ROL_ADMIN), null, 0, 20);
-        verify(repository).findAll(any(Pageable.class));
+    void paginaPara_adminSinFiltrosVeTodo() {
+        paginar(sesion(50, AuthService.ROL_ADMIN), null, FiltroMomento.TODOS);
 
-        service.paginaPara(sesion(50, AuthService.ROL_ADMIN), 1, 0, 20);
-        verify(repository).findByIdManicurista(eq(1), any(Pageable.class));
+        verify(cb, never()).equal(any(), any());
+        verify(cb, never()).isTrue(any());
+    }
 
-        // La manicurista ignora el filtro: siempre ve los suyos
-        service.paginaPara(sesion(4, AuthService.ROL_MANICURISTA), 1, 0, 20);
-        verify(repository).findByIdManicurista(eq(4), any(Pageable.class));
+    @Test
+    void paginaPara_adminPuedeFiltrarPorManicurista() {
+        paginar(sesion(50, AuthService.ROL_ADMIN), 1, FiltroMomento.TODOS);
 
-        service.paginaPara(sesion(2, AuthService.ROL_CLIENTE), null, 0, 20);
-        verify(repository).findByIdCliente(eq(2), any(Pageable.class));
+        verify(cb).equal(campo("idManicurista"), 1);
+        verify(cb, never()).equal(eq(campo("idCliente")), any());
+    }
 
-        service.paginaPara(sesion(2, AuthService.ROL_CLIENTE), 1, 0, 20);
-        verify(repository).findByIdClienteAndIdManicurista(eq(2), eq(1), any(Pageable.class));
+    @Test
+    void paginaPara_manicuristaVeSoloLosSuyosYIgnoraElFiltro() {
+        paginar(sesion(4, AuthService.ROL_MANICURISTA), 1, FiltroMomento.TODOS);
+
+        verify(cb).equal(campo("idManicurista"), 4);
+        verify(cb, never()).equal(campo("idManicurista"), 1);
+    }
+
+    @Test
+    void paginaPara_clienteVeSoloLosSuyosYPuedeFiltrarPorManicurista() {
+        paginar(sesion(2, AuthService.ROL_CLIENTE), 1, FiltroMomento.TODOS);
+
+        verify(cb).equal(campo("idCliente"), 2);
+        verify(cb).equal(campo("idManicurista"), 1);
+    }
+
+    @Test
+    void paginaPara_proximos_soloActivosFuturosOrdenadosDelMasCercano() {
+        paginar(sesion(50, AuthService.ROL_ADMIN), null, FiltroMomento.PROXIMOS);
+
+        verify(cb).isTrue(campo("activo"));
+        verify(cb).greaterThanOrEqualTo(eq(campo("diaHorario")), any(LocalDateTime.class));
+        assertEquals(Sort.Direction.ASC, pageableUsado.getSort().getOrderFor("diaHorario").getDirection());
+    }
+
+    @Test
+    void paginaPara_historial_pasadosOCanceladosOrdenadosDelMasReciente() {
+        paginar(sesion(50, AuthService.ROL_ADMIN), null, FiltroMomento.HISTORIAL);
+
+        verify(cb).isFalse(campo("activo"));
+        verify(cb).lessThan(eq(campo("diaHorario")), any(LocalDateTime.class));
+        assertEquals(Sort.Direction.DESC, pageableUsado.getSort().getOrderFor("diaHorario").getDirection());
     }
 
     @Test
     void paginaPara_acotaElTamanioYLaPagina() {
         ArgumentCaptor<Pageable> captor = ArgumentCaptor.forClass(Pageable.class);
 
-        service.paginaPara(sesion(50, AuthService.ROL_ADMIN), null, -3, 100000);
+        service.paginaPara(sesion(50, AuthService.ROL_ADMIN), null, FiltroMomento.TODOS, -3, 100000);
 
-        verify(repository).findAll(captor.capture());
+        verify(repository).findAll(any(Specification.class), captor.capture());
         assertEquals(0, captor.getValue().getPageNumber());
         assertEquals(100, captor.getValue().getPageSize());
+    }
+
+    // ---------- estado del turno ----------
+
+    @Test
+    void estado_segunSiEstaActivoYSiYaPaso() {
+        TurnosModel futuro = turnoExistente(1L, 1, 2, horario(3, 10, 0), LocalTime.of(1, 0));
+        TurnosModel pasado = turnoExistente(2L, 1, 2, horario(-3, 10, 0), LocalTime.of(1, 0));
+        TurnosModel cancelado = turnoExistente(3L, 1, 2, horario(-3, 10, 0), LocalTime.of(1, 0));
+        cancelado.setActivo(false);
+        TurnosModel canceladoFuturo = turnoExistente(4L, 1, 2, horario(3, 10, 0), LocalTime.of(1, 0));
+        canceladoFuturo.setActivo(false);
+
+        assertEquals("PROXIMO", futuro.getEstado());
+        assertEquals("REALIZADO", pasado.getEstado());
+        assertEquals("CANCELADO", cancelado.getEstado());
+        assertEquals("CANCELADO", canceladoFuturo.getEstado());
     }
 
     // ---------- finDe ----------
