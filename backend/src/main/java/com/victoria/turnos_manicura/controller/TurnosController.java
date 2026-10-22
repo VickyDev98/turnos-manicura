@@ -3,6 +3,7 @@ package com.victoria.turnos_manicura.controller;
 
 import com.victoria.turnos_manicura.dto.AgendaBloque;
 import com.victoria.turnos_manicura.dto.ReprogramarRequest;
+import com.victoria.turnos_manicura.model.FiltroMomento;
 import com.victoria.turnos_manicura.model.TurnosModel;
 import com.victoria.turnos_manicura.service.AuthService;
 import com.victoria.turnos_manicura.service.TurnosService;
@@ -33,13 +34,15 @@ public class TurnosController {
         return service.listarPara(authService.requerirSesion(authorization));
     }
 
-    // Turnos de a una página (page desde 0), los más recientes primero. idManicurista filtra (opcional)
+    // Turnos de a una página (page desde 0). Filtros opcionales: idManicurista y momento
+    // (TODOS, PROXIMOS o HISTORIAL: los que ya pasaron y los cancelados)
     @GetMapping("/pagina")
     public Page<TurnosModel> pagina(@RequestHeader(value = "Authorization", required = false) String authorization,
                                     @RequestParam(defaultValue = "0") int page,
                                     @RequestParam(defaultValue = "20") int size,
-                                    @RequestParam(required = false) Integer idManicurista) {
-        return service.paginaPara(authService.requerirSesion(authorization), idManicurista, page, size);
+                                    @RequestParam(required = false) Integer idManicurista,
+                                    @RequestParam(defaultValue = "TODOS") FiltroMomento momento) {
+        return service.paginaPara(authService.requerirSesion(authorization), idManicurista, momento, page, size);
     }
 
     @PostMapping
