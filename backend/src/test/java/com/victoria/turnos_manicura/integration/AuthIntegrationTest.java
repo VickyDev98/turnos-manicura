@@ -161,4 +161,25 @@ class AuthIntegrationTest extends IntegrationTestBase {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.activo").value(false));
     }
+
+    @Test
+    void usuarioDadoDeBajaPierdeElAccesoAunqueSuTokenSigaVigente() throws Exception {
+        UsuariosModel cliente = crearUsuario("CLIENTE", "cliente.vigente@test.com");
+        crearUsuario("ADMIN", "admin.baja@test.com");
+        String authCliente = iniciarSesion("cliente.vigente@test.com");
+        String authAdmin = iniciarSesion("admin.baja@test.com");
+
+        mockMvc.perform(get("/usuarios").header(HttpHeaders.AUTHORIZATION, authCliente))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(put("/usuarios/" + cliente.getId() + "/activo")
+                        .header(HttpHeaders.AUTHORIZATION, authAdmin)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(json(Map.of("activo", false))))
+                .andExpect(status().isOk());
+
+        // El token todavía no venció, pero el usuario ya no está activo
+        mockMvc.perform(get("/usuarios").header(HttpHeaders.AUTHORIZATION, authCliente))
+                .andExpect(status().isUnauthorized());
+    }
 }

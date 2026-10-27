@@ -45,16 +45,12 @@ public class UsuariosController {
         return service.actualizar(id, datos);
     }
 
-    // Baja o reactivación (solo el admin). Al darlo de baja se cierran sus sesiones abiertas
+    // Baja o reactivación (solo el admin). Al darlo de baja pierde el acceso enseguida: ver AuthService.requerirSesion
     @PutMapping("/{id}/activo")
     public UsuariosModel cambiarActivo(@RequestHeader(value = "Authorization", required = false) String auth,
                                        @PathVariable Long id,
                                        @Valid @RequestBody ActivoRequest pedido) {
         AuthService.Sesion admin = authService.requerirAdmin(auth);
-        UsuariosModel usuario = service.cambiarActivo(id, pedido.getActivo(), admin.getIdUsuario());
-        if (!pedido.getActivo()) {
-            authService.cerrarSesionesDe(id);
-        }
-        return usuario;
+        return service.cambiarActivo(id, pedido.getActivo(), admin.getIdUsuario());
     }
 }
