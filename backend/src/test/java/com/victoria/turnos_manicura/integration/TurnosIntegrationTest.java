@@ -7,6 +7,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.ResultActions;
 
 import java.time.LocalDateTime;
@@ -14,6 +15,7 @@ import java.time.LocalDateTime;
 import static org.hamcrest.Matchers.contains;
 import static org.hamcrest.Matchers.containsInAnyOrder;
 import static org.hamcrest.Matchers.hasSize;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
@@ -215,6 +217,71 @@ class TurnosIntegrationTest extends IntegrationTestBase {
 
         cancelar("cli2@turnos.com", turno).andExpect(status().isForbidden());
         cancelar("mani2@turnos.com", turno).andExpect(status().isForbidden());
+    }
+
+    // ---------- Asistencia ----------
+
+    private ResultActions marcarAsistencia(String email, TurnosModel turno, String body) throws Exception {
+        return mockMvc.perform(put("/turnos/" + turno.getId() + "/asistencia")
+                .header(HttpHeaders.AUTHORIZATION, iniciarSesion(email))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(body));
+    }
+
+    @Test
+    void manicuristaMarcaNoAsistioYElTurnoQuedaEnElHistorial() throws Exception {
+        TurnosModel turno = crearTurno(manicurista1, cliente1, LocalDateTime.now().minusHours(3), true);
+
+        marcarAsistencia("mani1@turnos.com", turno, "{\"noAsistio\":true}")
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.estado").value("NO_ASISTIO"));
+
+        assertTrue(turnosRepository.findById(turno.getId()).orElseThrow().isNoAsistio());
+        pagina("cli1@turnos.com", "?momento=HISTORIAL")
+                .andExpect(jsonPath("$.content[0].estado").value("NO_ASISTIO"));
+        pagina("cli1@turnos.com", "?momento=PROXIMOS")
+                .andExpect(jsonPath("$.content", hasSize(0)));
+    }
+
+    @Test
+    void manicuristaPuedeCorregirUnNoAsistioMarcadoPorError() throws Exception {
+        TurnosModel turno = crearTurno(manicurista1, cliente1, LocalDateTime.now().minusHours(3), true);
+        marcarAsistencia("mani1@turnos.com", turno, "{\"noAsistio\":true}").andExpect(status().isOk());
+
+        marcarAsistencia("mani1@turnos.com", turno, "{\"noAsistio\":false}")
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.estado").value("REALIZADO"));
+    }
+
+    @Test
+    void elClienteNoPuedeMarcarAsistenciaNiDeSuPropioTurno() throws Exception {
+        TurnosModel turno = crearTurno(manicurista1, cliente1, LocalDateTime.now().minusHours(3), true);
+
+        marcarAsistencia("cli1@turnos.com", turno, "{\"noAsistio\":true}").andExpect(status().isForbidden());
+        assertFalse(turnosRepository.findById(turno.getId()).orElseThrow().isNoAsistio());
+    }
+
+    @Test
+    void otraManicuristaNoPuedeMarcarAsistenciaDelTurnoAjeno() throws Exception {
+        TurnosModel turno = crearTurno(manicurista1, cliente1, LocalDateTime.now().minusHours(3), true);
+
+        marcarAsistencia("mani2@turnos.com", turno, "{\"noAsistio\":true}").andExpect(status().isForbidden());
+    }
+
+    @Test
+    void noSePuedeMarcarAsistenciaDeUnTurnoQueTodaviaNoEmpezo() throws Exception {
+        TurnosModel turno = crearTurno(manicurista1, cliente1, LocalDateTime.now().plusHours(3), true);
+
+        marcarAsistencia("mani1@turnos.com", turno, "{\"noAsistio\":true}").andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void marcarAsistenciaSinElCampoDa400ConMensaje() throws Exception {
+        TurnosModel turno = crearTurno(manicurista1, cliente1, LocalDateTime.now().minusHours(3), true);
+
+        marcarAsistencia("mani1@turnos.com", turno, "{}")
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errores.noAsistio").value("Indicá si el cliente asistió o no"));
     }
 
     @Test

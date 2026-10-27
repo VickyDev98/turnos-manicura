@@ -2,6 +2,7 @@ package com.victoria.turnos_manicura.controller;
 
 
 import com.victoria.turnos_manicura.dto.AgendaBloque;
+import com.victoria.turnos_manicura.dto.AsistenciaRequest;
 import com.victoria.turnos_manicura.dto.ReprogramarRequest;
 import com.victoria.turnos_manicura.model.FiltroMomento;
 import com.victoria.turnos_manicura.model.TurnosModel;
@@ -64,6 +65,14 @@ public class TurnosController {
     public TurnosModel cancelar(@RequestHeader(value = "Authorization", required = false) String authorization,
                                 @PathVariable Long id) {
         return service.cancelar(id, authService.requerirSesion(authorization));
+    }
+
+    // Marca (o corrige) que el cliente no se presentó a un turno que ya empezó. Solo manicuristas y admin
+    @PutMapping("/{id}/asistencia")
+    public TurnosModel asistencia(@RequestHeader(value = "Authorization", required = false) String authorization,
+                                  @PathVariable Long id,
+                                  @Valid @RequestBody AsistenciaRequest pedido) {
+        return service.marcarAsistencia(id, pedido.getNoAsistio(), authService.requerirPersonal(authorization));
     }
 
     // Mueve un turno a otro horario (lo puede hacer su cliente, su manicurista o el admin)
