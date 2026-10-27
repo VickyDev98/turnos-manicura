@@ -135,14 +135,17 @@ Iniciá sesión con alguno de los usuarios de la tabla de arriba.
 
 ## 🧪 Tests
 
-Hay **100 tests unitarios** de la capa de servicios (`AuthService`, `TurnosService`, `DisponibilidadService`, `UsuariosService`, `ServiciosService`), escritos con **JUnit 5 y Mockito**: los repositorios se simulan, así que corren en segundos y sin base de datos. Cubren las reglas de negocio: superposición de turnos, horarios de trabajo, repeticiones de bloqueos, permisos por rol, validaciones de usuarios y sesiones.
+Hay **133 tests unitarios** de la capa de servicios (`AuthService`, `TurnosService`, `DisponibilidadService`, `UsuariosService`, `ServiciosService`, `NotificacionesService`, `RecordatoriosService`), escritos con **JUnit 5 y Mockito**: los repositorios se simulan, así que corren en segundos y sin base de datos. Cubren las reglas de negocio: superposición de turnos, horarios de trabajo, repeticiones de bloqueos, permisos por rol, validaciones de usuarios y sesiones.
+
+Además hay **tests de integración** (`src/test/.../integration/`) que levantan la aplicación completa (filtro de sesión, controllers, services y repositorios) y le mandan pedidos HTTP simulados con **MockMvc**. Usan una base **H2 en memoria**, así que tampoco necesitan MySQL ni Docker. Cubren login, registro, bloqueo por intentos fallidos, rutas protegidas por rol, el listado paginado de turnos (por rol y por momento) y la cancelación con anticipación.
 
 ```bash
 cd backend
-./mvnw test -Dtest='*ServiceTest'     # en Windows: mvnw.cmd test -Dtest=*ServiceTest
+./mvnw test                           # todos los tests; en Windows: mvnw.cmd test
+./mvnw test -Dtest='*ServiceTest'     # solo los unitarios
 ```
 
-> `TurnosManicuraApplicationTests` levanta toda la aplicación y necesita MySQL corriendo, por eso se excluye en el comando de arriba.
+> H2 es otra base distinta de MySQL: el esquema de los tests sale de las entidades, no de `scripts/Turnos.sql`, así que estos tests no detectan diferencias entre ambos.
 
 ---
 
@@ -176,7 +179,6 @@ Las rutas protegidas esperan el header `Authorization: Bearer <token>` que devue
 ## 🔭 Posibles mejoras
 
 - Reemplazar las sesiones en memoria por **JWT** o Spring Security completo (hoy la autorización se resuelve en los servicios y se pierde al reiniciar el backend).
-- Agregar tests de integración de los controllers y de la base (hoy hay tests unitarios de la capa de servicios).
 - Migraciones de base con **Flyway** en lugar de un script único.
 - Mover las credenciales a un gestor de secretos (hoy van por variables de entorno).
 - Avisos también por **WhatsApp**, y recordatorios configurables por cliente (hoy son por mail y fijos en 24 hs).

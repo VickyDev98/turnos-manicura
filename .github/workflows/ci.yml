@@ -18,5 +18,5 @@ jobs:
           distribution: temurin
           java-version: 17
           cache: maven
-      # Solo los tests de services (Mockito): no necesitan MySQL
-      - run: chmod +x mvnw && ./mvnw -B test -Dtest='*ServiceTest,ErrorHandlerTest'
+      # Todos los tests: los unitarios usan Mockito y los de integración una base H2 en memoria (no hace falta MySQL)
+      - run: chmod +x mvnw && ./mvnw -B test
