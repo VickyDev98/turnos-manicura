@@ -39,7 +39,7 @@ También podés crear tu propia cuenta de cliente o manicurista desde **"¿No te
 - **Cancelar y reprogramar** turnos. Un cliente solo puede cancelar o reprogramar con **24 hs de anticipación** respecto del horario actual del turno (`app.turnos.horas-minimas-cancelacion`, 0 = sin límite); la manicurista y el admin pueden siempre.
 - **Asistencia:** la manicurista (o el admin) puede marcar "No asistió" en un turno que ya empezó, y corregirlo si fue un error. El estado del turno pasa a `NO_ASISTIO` y queda en el historial.
 - **Avisos y recordatorios por mail:** al reservar, cancelar o reprogramar un turno se avisa a la otra parte (manicurista o cliente), y el cliente recibe un **recordatorio 24 hs antes**, una sola vez por horario. Los mails salen en segundo plano y, si fallan, no afectan la operación. Si no hay servidor de correo configurado, no se manda nada. Ver [Avisos por mail](#-avisos-por-mail).
-- **Administración de usuarios** con baja lógica: un usuario dado de baja no puede iniciar sesión y se le cierran las sesiones abiertas.
+- **Administración de usuarios** con baja lógica: un usuario dado de baja no puede iniciar sesión y pierde el acceso enseguida, aunque su token siga vigente.
 - **Manejo centralizado de errores:** los mensajes de validación llegan al frontend y se muestran al usuario.
 
 ---
@@ -107,7 +107,7 @@ La primera vez tarda unos minutos (descarga imágenes y compila el backend). Cua
 | Backend (API) | http://localhost:8080 |
 | MySQL | `localhost:3309` (usuario `root`, clave la de tu `.env`) |
 
-Antes de levantar, copiá `.env.example` como `.env` y poné tu clave de MySQL (es obligatoria). El backend crea las tablas y carga los datos de prueba solo, con **Flyway**, la primera vez que arranca (ver "Cambios en la base de datos" más abajo). Si ya tenías una base creada con el sistema anterior (`Turnos.sql`), recreala con `docker compose down -v`. Para apagar todo: `docker compose down`. Para **borrar también los datos y volver a empezar de cero**: `docker compose down -v`.
+Antes de levantar, copiá `.env.example` como `.env` y poné tu clave de MySQL y una `JWT_SECRET` (la clave que firma los tokens de sesión, mínimo 32 caracteres); las dos son obligatorias. El backend crea las tablas y carga los datos de prueba solo, con **Flyway**, la primera vez que arranca (ver "Cambios en la base de datos" más abajo). Si ya tenías una base creada con el sistema anterior (`Turnos.sql`), recreala con `docker compose down -v`. Para apagar todo: `docker compose down`. Para **borrar también los datos y volver a empezar de cero**: `docker compose down -v`.
 
 La clave de MySQL se define en `.env` (ver `.env.example`).
 
@@ -130,7 +130,7 @@ El esquema se maneja con **migraciones**: archivos SQL numerados en `backend/src
 Requisitos: JDK 17 y MySQL 8 en el puerto **3308** (o cambiá el puerto en `application.properties`).
 
 1. Creá la base vacía en MySQL: `CREATE DATABASE TURNOS;` (las tablas las crea Flyway al arrancar el backend).
-2. Definí la clave de MySQL en la variable de entorno `DB_PASSWORD` (opcionales: `DB_USER`, `DB_URL`). Para cargar también los datos de prueba, definí `FLYWAY_LOCATIONS=classpath:db/migration,classpath:db/datos-prueba`. Después corré:
+2. Definí la clave de MySQL en la variable de entorno `DB_PASSWORD` (opcionales: `DB_USER`, `DB_URL`) y la clave de los tokens en `JWT_SECRET` (mínimo 32 caracteres). Para cargar también los datos de prueba, definí `FLYWAY_LOCATIONS=classpath:db/migration,classpath:db/datos-prueba`. Después corré:
    ```bash
    cd backend
    ./mvnw spring-boot:run        # en Windows: mvnw.cmd spring-boot:run
