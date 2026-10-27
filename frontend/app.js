@@ -74,6 +74,7 @@ const usuarioPorId = (id) => state.usuarios.find((u) => u.id === id);
 const servicioPorId = (id) => state.servicios.find((s) => s.id === id);
 const esManicurista = () => state.sesion?.rol === 'MANICURISTA';
 const esCliente = () => state.sesion?.rol === 'CLIENTE';
+const esPersonal = () => esManicurista() || state.sesion?.rol === 'ADMIN';
 
 const pad2 = (n) => String(n).padStart(2, '0');
 const fechaDeBackend = (diaHorario) => new Date(String(diaHorario).replace(' ', 'T'));
@@ -599,12 +600,29 @@ function renderMisTurnos() {
   }).join('');
 }
 
-// Estado que calcula el backend: PROXIMO (activo y por venir), REALIZADO (activo y ya pasó) o CANCELADO
+// Estado que calcula el backend: PROXIMO (activo y por venir), REALIZADO (activo y ya pasó),
+// NO_ASISTIO (el cliente no se presentó) o CANCELADO
 const ESTADOS_TURNO = {
   PROXIMO: { texto: 'Próximo', clase: 'on' },
   REALIZADO: { texto: 'Realizado', clase: 'done' },
+  NO_ASISTIO: { texto: 'No asistió', clase: 'warn' },
   CANCELADO: { texto: 'Cancelado', clase: 'off' },
 };
+
+// Botones de la columna de acciones según el estado. Marcar la asistencia es solo para manicuristas y admin
+function accionesDeTurno(t) {
+  if (t.estado === 'PROXIMO') {
+    return `<button class="btn-link editar" data-reprogramar="${t.id}">Reprogramar</button><button class="btn-link" data-cancelar="${t.id}">Cancelar</button>`;
+  }
+  if (!esPersonal()) return '';
+  if (t.estado === 'REALIZADO') {
+    return `<button class="btn-link" data-asistencia="${t.id}" data-no-asistio="true">Marcar no asistió</button>`;
+  }
+  if (t.estado === 'NO_ASISTIO') {
+    return `<button class="btn-link editar" data-asistencia="${t.id}" data-no-asistio="false">Corregir: sí asistió</button>`;
+  }
+  return '';
+}
 
 // Pide la página de la tabla (ya filtrada y ordenada por el backend). El admin no baja la lista completa
 async function cargarTurnos(pagina = state.pagina.number) {
@@ -650,7 +668,7 @@ function renderTurnos() {
       <td>${esc(nombreCompleto(usuarioPorId(t.idManicurista)) || `#${t.idManicurista}`)}</td>
       <td>${esc(nombreCompleto(usuarioPorId(t.idCliente)) || `#${t.idCliente}`)}</td>
       <td><span class="badge ${ESTADOS_TURNO[t.estado].clase}">${ESTADOS_TURNO[t.estado].texto}</span></td>
-      <td class="acciones">${t.estado === 'PROXIMO' ? `<button class="btn-link editar" data-reprogramar="${t.id}">Reprogramar</button><button class="btn-link" data-cancelar="${t.id}">Cancelar</button>` : ""}</td>
+      <td class="acciones">${accionesDeTurno(t)}</td>
     </tr>`;
   }).join('');
 }
@@ -767,6 +785,25 @@ async function cancelarDesdeClick(e) {
 
 $('#tablaTurnos').addEventListener('click', cancelarDesdeClick);
 $('#tarjetasTurnos').addEventListener('click', cancelarDesdeClick);
+
+// Marca (o corrige) que el cliente no se presentó a un turno que ya pasó
+async function asistenciaDesdeClick(e) {
+  const id = e.target.dataset.asistencia;
+  if (!id) return;
+  const noAsistio = e.target.dataset.noAsistio === 'true';
+  if (noAsistio && !confirm('¿Marcar que el cliente no asistió a este turno?')) return;
+  e.target.disabled = true;
+  try {
+    await api(`/turnos/${id}/asistencia`, { method: 'PUT', body: JSON.stringify({ noAsistio }) });
+    toast(noAsistio ? 'Turno marcado como "No asistió"' : 'Turno corregido: el cliente sí asistió');
+    await cargarTurnos();
+  } catch (err) {
+    toast(err.message, true);
+    e.target.disabled = false;
+  }
+}
+
+$('#tablaTurnos').addEventListener('click', asistenciaDesdeClick);
 
 // ---------- Reprogramar un turno ----------
 

@@ -360,6 +360,98 @@ class TurnosServiceTest {
                 () -> service.cancelar(10L, sesion(CLIENTE, AuthService.ROL_CLIENTE)));
     }
 
+    // ---------- marcar asistencia ----------
+
+    @Test
+    void marcarAsistencia_laManicuristaDelTurnoLoMarcaComoNoAsistio() {
+        TurnosModel turno = turnoExistente(10L, MANICURISTA, CLIENTE, LocalDateTime.now().minusHours(3), LocalTime.of(1, 0));
+        when(repository.findById(10L)).thenReturn(Optional.of(turno));
+
+        TurnosModel marcado = service.marcarAsistencia(10L, true, sesion(MANICURISTA, AuthService.ROL_MANICURISTA));
+
+        assertTrue(marcado.isNoAsistio());
+        assertEquals("NO_ASISTIO", marcado.getEstado());
+        verify(repository).save(turno);
+    }
+
+    @Test
+    void marcarAsistencia_conFalseCorrigeElError() {
+        TurnosModel turno = turnoExistente(10L, MANICURISTA, CLIENTE, LocalDateTime.now().minusHours(3), LocalTime.of(1, 0));
+        turno.setNoAsistio(true);
+        when(repository.findById(10L)).thenReturn(Optional.of(turno));
+
+        TurnosModel corregido = service.marcarAsistencia(10L, false, sesion(MANICURISTA, AuthService.ROL_MANICURISTA));
+
+        assertFalse(corregido.isNoAsistio());
+        assertEquals("REALIZADO", corregido.getEstado());
+    }
+
+    @Test
+    void marcarAsistencia_elAdminPuedeMarcarCualquierTurno() {
+        TurnosModel turno = turnoExistente(10L, MANICURISTA, CLIENTE, LocalDateTime.now().minusDays(1), LocalTime.of(1, 0));
+        when(repository.findById(10L)).thenReturn(Optional.of(turno));
+
+        assertTrue(service.marcarAsistencia(10L, true, sesion(50, AuthService.ROL_ADMIN)).isNoAsistio());
+    }
+
+    @Test
+    void marcarAsistencia_otraManicurista_lanzaForbidden() {
+        TurnosModel turno = turnoExistente(10L, MANICURISTA, CLIENTE, LocalDateTime.now().minusHours(3), LocalTime.of(1, 0));
+        when(repository.findById(10L)).thenReturn(Optional.of(turno));
+
+        ResponseStatusException e = assertThrows(ResponseStatusException.class,
+                () -> service.marcarAsistencia(10L, true, sesion(50, AuthService.ROL_MANICURISTA)));
+
+        assertEquals(HttpStatus.FORBIDDEN, e.getStatusCode());
+        assertFalse(turno.isNoAsistio());
+        verify(repository, never()).save(any());
+    }
+
+    @Test
+    void marcarAsistencia_turnoQueTodaviaNoEmpezo_lanzaBadRequest() {
+        TurnosModel turno = turnoExistente(10L, MANICURISTA, CLIENTE, LocalDateTime.now().plusHours(2), LocalTime.of(1, 0));
+        when(repository.findById(10L)).thenReturn(Optional.of(turno));
+
+        ResponseStatusException e = assertThrows(ResponseStatusException.class,
+                () -> service.marcarAsistencia(10L, true, sesion(MANICURISTA, AuthService.ROL_MANICURISTA)));
+
+        assertEquals(HttpStatus.BAD_REQUEST, e.getStatusCode());
+        assertFalse(turno.isNoAsistio());
+        verify(repository, never()).save(any());
+    }
+
+    @Test
+    void marcarAsistencia_turnoCancelado_lanzaBadRequest() {
+        TurnosModel turno = turnoExistente(10L, MANICURISTA, CLIENTE, LocalDateTime.now().minusHours(3), LocalTime.of(1, 0));
+        turno.setActivo(false);
+        when(repository.findById(10L)).thenReturn(Optional.of(turno));
+
+        ResponseStatusException e = assertThrows(ResponseStatusException.class,
+                () -> service.marcarAsistencia(10L, true, sesion(MANICURISTA, AuthService.ROL_MANICURISTA)));
+
+        assertEquals(HttpStatus.BAD_REQUEST, e.getStatusCode());
+        verify(repository, never()).save(any());
+    }
+
+    @Test
+    void marcarAsistencia_turnoInexistente_lanzaNotFound() {
+        when(repository.findById(10L)).thenReturn(Optional.empty());
+
+        ResponseStatusException e = assertThrows(ResponseStatusException.class,
+                () -> service.marcarAsistencia(10L, true, sesion(MANICURISTA, AuthService.ROL_MANICURISTA)));
+
+        assertEquals(HttpStatus.NOT_FOUND, e.getStatusCode());
+    }
+
+    @Test
+    void guardar_ignoraUnNoAsistioQueVengaEnElPedido() {
+        // Un turno nuevo siempre arranca como asistido, aunque alguien intente mandarlo marcado
+        TurnosModel turno = turnoNuevo(horario(2, 10, 0));
+        turno.setNoAsistio(true);
+
+        assertFalse(service.guardar(turno).isNoAsistio());
+    }
+
     // ---------- reprogramar ----------
 
     @Test
