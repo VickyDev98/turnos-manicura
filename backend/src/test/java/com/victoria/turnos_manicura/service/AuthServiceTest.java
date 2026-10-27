@@ -8,6 +8,7 @@ import com.victoria.turnos_manicura.model.TiposUsuarioModel;
 import com.victoria.turnos_manicura.model.UsuariosModel;
 import com.victoria.turnos_manicura.repository.TiposUsuarioRepository;
 import com.victoria.turnos_manicura.repository.UsuariosRepository;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -18,21 +19,12 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
 import org.springframework.http.HttpStatus;
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.security.oauth2.jwt.Jwt;
+import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.web.server.ResponseStatusException;
 
-import com.nimbusds.jose.jwk.source.ImmutableSecret;
-import org.springframework.security.oauth2.jose.jws.MacAlgorithm;
-import org.springframework.security.oauth2.jwt.JwsHeader;
-import org.springframework.security.oauth2.jwt.JwtClaimsSet;
-import org.springframework.security.oauth2.jwt.JwtEncoderParameters;
-import org.springframework.security.oauth2.jwt.NimbusJwtEncoder;
-
-import javax.crypto.SecretKey;
-import javax.crypto.spec.SecretKeySpec;
-import java.nio.charset.StandardCharsets;
-import java.time.Duration;
-import java.time.Instant;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -49,6 +41,7 @@ class AuthServiceTest {
     @Mock TiposUsuarioRepository tiposRepository;
     @Mock PasswordEncoder passwordEncoder;
     @Mock UsuariosService usuariosService;
+    @Mock TokensCerradosService tokensCerrados;
     // JwtService real (no simulado): así se prueba que el token emitido de verdad se puede leer
     private static final String CLAVE = "clave-de-prueba-solo-para-tests-0123456789";
     @Spy JwtService jwtService = new JwtService(CLAVE, 480);
@@ -67,7 +60,6 @@ class AuthServiceTest {
         ana.setPassword("hash");
         ana.setActivo(true);
 
-        when(usuariosRepository.findById(1L)).thenReturn(Optional.of(ana));
         when(usuariosRepository.findByEmailIgnoreCase("ana@mail.com")).thenReturn(Optional.of(ana));
         when(passwordEncoder.matches("123456", "hash")).thenReturn(true);
         when(tiposRepository.findById(2L)).thenReturn(Optional.of(tipo(2L, "manicurista")));
@@ -119,93 +111,66 @@ class AuthServiceTest {
     }
 
     // ---------- sesiones ----------
+    // El token ya lo validó Spring Security antes de llegar al service (ver SesionVigenteValidatorTest y
+    // JwtServiceTest): acá se prueba lo que el service lee del contexto y el logout
 
     @Test
-    void requerirSesion_conTokenValido_devuelveLaSesion() {
-        String token = service.login(login("ana@mail.com", "123456")).getToken();
+    void requerirSesion_conUnUsuarioAutenticado_devuelveLaSesion() {
+        autenticarComo(1L, "MANICURISTA");
 
-        AuthService.Sesion sesion = service.requerirSesion("Bearer " + token);
+        AuthService.Sesion sesion = service.requerirSesion();
 
         assertEquals(1L, sesion.getIdUsuario());
         assertEquals("MANICURISTA", sesion.getRol());
     }
 
     @Test
-    void requerirSesion_sinHeaderOConTokenInventado_lanzaUnauthorized() {
+    void requerirSesion_sinAutenticacion_lanzaUnauthorized() {
         assertEquals(HttpStatus.UNAUTHORIZED,
-                assertThrows(ResponseStatusException.class, () -> service.requerirSesion(null)).getStatusCode());
-        assertEquals(HttpStatus.UNAUTHORIZED,
-                assertThrows(ResponseStatusException.class, () -> service.requerirSesion("Bearer inventado")).getStatusCode());
-        assertEquals(HttpStatus.UNAUTHORIZED,
-                assertThrows(ResponseStatusException.class, () -> service.requerirSesion("sin-bearer")).getStatusCode());
+                assertThrows(ResponseStatusException.class, () -> service.requerirSesion()).getStatusCode());
     }
 
     @Test
-    void logout_invalidaElToken() {
-        String header = "Bearer " + service.login(login("ana@mail.com", "123456")).getToken();
+    void logout_anotaElTokenComoCerrado() {
+        String token = service.login(login("ana@mail.com", "123456")).getToken();
+        Jwt jwt = jwtService.leer(token);
 
-        service.logout(header);
+        service.logout("Bearer " + token);
 
-        assertThrows(ResponseStatusException.class, () -> service.requerirSesion(header));
+        verify(tokensCerrados).cerrar(jwt.getId(), jwt.getExpiresAt());
     }
 
     @Test
-    void requerirSesion_usuarioDadoDeBajaConTokenVigente_lanzaUnauthorized() {
-        String header = "Bearer " + service.login(login("ana@mail.com", "123456")).getToken();
+    void logout_conTokenInventadoOSinHeader_noHaceNada() {
+        service.logout("Bearer inventado");
+        service.logout(null);
 
-        ana.setActivo(false);
-
-        assertEquals(HttpStatus.UNAUTHORIZED,
-                assertThrows(ResponseStatusException.class, () -> service.requerirSesion(header)).getStatusCode());
-    }
-
-    @Test
-    void requerirSesion_tokenDeUnUsuarioQueYaNoExiste_lanzaUnauthorized() {
-        String header = "Bearer " + service.login(login("ana@mail.com", "123456")).getToken();
-        when(usuariosRepository.findById(1L)).thenReturn(Optional.empty());
-
-        assertEquals(HttpStatus.UNAUTHORIZED,
-                assertThrows(ResponseStatusException.class, () -> service.requerirSesion(header)).getStatusCode());
-    }
-
-    @Test
-    void requerirSesion_tokenFirmadoConOtraClave_lanzaUnauthorized() {
-        String ajeno = new JwtService("otra-clave-distinta-de-32-caracteres-xx", 480).emitir(1L, "ADMIN");
-
-        assertEquals(HttpStatus.UNAUTHORIZED,
-                assertThrows(ResponseStatusException.class, () -> service.requerirSesion("Bearer " + ajeno)).getStatusCode());
-    }
-
-    @Test
-    void jwtService_conClaveCorta_noArranca() {
-        assertThrows(IllegalStateException.class, () -> new JwtService("corta", 480));
+        verify(tokensCerrados, never()).cerrar(any(), any());
     }
 
     // ---------- roles ----------
 
     @Test
     void requerirManicurista_conUnaManicurista_pasa() {
-        String header = "Bearer " + service.login(login("ana@mail.com", "123456")).getToken();
+        autenticarComo(1L, "MANICURISTA");
 
-        assertEquals(1L, service.requerirManicurista(header).getIdUsuario());
+        assertEquals(1L, service.requerirManicurista().getIdUsuario());
     }
 
     @Test
     void requerirAdmin_conUnaManicurista_lanzaForbidden() {
-        String header = "Bearer " + service.login(login("ana@mail.com", "123456")).getToken();
+        autenticarComo(1L, "MANICURISTA");
 
         assertEquals(HttpStatus.FORBIDDEN,
-                assertThrows(ResponseStatusException.class, () -> service.requerirAdmin(header)).getStatusCode());
+                assertThrows(ResponseStatusException.class, () -> service.requerirAdmin()).getStatusCode());
     }
 
     @Test
     void requerirPersonal_dejaAfueraALosClientes() {
-        ana.setTipo(1);
-        when(tiposRepository.findById(1L)).thenReturn(Optional.of(tipo(1L, "CLIENTE")));
-        String header = "Bearer " + service.login(login("ana@mail.com", "123456")).getToken();
+        autenticarComo(1L, "CLIENTE");
 
         assertEquals(HttpStatus.FORBIDDEN,
-                assertThrows(ResponseStatusException.class, () -> service.requerirPersonal(header)).getStatusCode());
+                assertThrows(ResponseStatusException.class, () -> service.requerirPersonal()).getStatusCode());
     }
 
     // ---------- registrar ----------
@@ -279,31 +244,19 @@ class AuthServiceTest {
         assertDoesNotThrow(() -> service.login(login("ana@mail.com", "123456")));
     }
 
-    @Test
-    void requerirSesion_tokenVencido_lanzaUnauthorized() {
-        String header = "Bearer " + tokenEmitidoHaceDosHorasConVigenciaDeUna();
-
-        assertEquals(HttpStatus.UNAUTHORIZED,
-                assertThrows(ResponseStatusException.class, () -> service.requerirSesion(header)).getStatusCode());
-    }
-
-    // JwtService siempre emite tokens vigentes, así que el vencido se arma a mano con la misma clave
-    private String tokenEmitidoHaceDosHorasConVigenciaDeUna() {
-        Instant hace2Horas = Instant.now().minus(Duration.ofHours(2));
-        JwtClaimsSet claims = JwtClaimsSet.builder()
-                .id("token-vencido")
-                .subject("1")
-                .claim(JwtService.CLAIM_ROL, "MANICURISTA")
-                .issuedAt(hace2Horas)
-                .expiresAt(hace2Horas.plus(Duration.ofHours(1)))
-                .build();
-        SecretKey clave = new SecretKeySpec(CLAVE.getBytes(StandardCharsets.UTF_8), "HmacSHA256");
-        return new NimbusJwtEncoder(new ImmutableSecret<>(clave))
-                .encode(JwtEncoderParameters.from(JwsHeader.with(MacAlgorithm.HS256).build(), claims))
-                .getTokenValue();
-    }
-
     // ---------- helpers ----------
+
+    @AfterEach
+    void limpiarContexto() {
+        SecurityContextHolder.clearContext();
+    }
+
+    // Deja en el contexto de Spring al usuario que, en un pedido real, habría autenticado el filtro de seguridad
+    private void autenticarComo(Long idUsuario, String rol) {
+        Jwt jwt = Jwt.withTokenValue("token").header("alg", "HS256")
+                .subject(String.valueOf(idUsuario)).claim(JwtService.CLAIM_ROL, rol).build();
+        SecurityContextHolder.getContext().setAuthentication(new JwtAuthenticationToken(jwt));
+    }
 
     private LoginRequest login(String email, String password) {
         LoginRequest r = new LoginRequest();

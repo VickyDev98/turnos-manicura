@@ -9,9 +9,12 @@ import com.victoria.turnos_manicura.repository.TiposUsuarioRepository;
 import com.victoria.turnos_manicura.repository.UsuariosRepository;
 import lombok.Getter;
 import org.springframework.http.HttpStatus;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.security.oauth2.jwt.JwtException;
+import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken;
 import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
 
@@ -48,18 +51,18 @@ public class AuthService {
         private Instant bloqueadoHasta;
     }
 
-    // Tokens cerrados con logout (id del token -> cuándo vence). Un JWT no se puede "borrar" porque el
-    // servidor no lo guarda, así que se anota acá hasta que venza solo. Se pierde al reiniciar el backend
-    private final Map<String, Instant> tokensCerrados = new ConcurrentHashMap<>();
     private final Map<String, Intentos> intentosLogin = new ConcurrentHashMap<>();
     private final UsuariosRepository usuariosRepository;
     private final TiposUsuarioRepository tiposRepository;
     private final PasswordEncoder passwordEncoder;
     private final UsuariosService usuariosService;
     private final JwtService jwtService;
+    private final TokensCerradosService tokensCerrados;
 
     public AuthService(UsuariosRepository usuariosRepository, TiposUsuarioRepository tiposRepository,
-                       PasswordEncoder passwordEncoder, UsuariosService usuariosService, JwtService jwtService) {
+                       PasswordEncoder passwordEncoder, UsuariosService usuariosService, JwtService jwtService,
+                       TokensCerradosService tokensCerrados) {
+        this.tokensCerrados = tokensCerrados;
         this.jwtService = jwtService;
         this.usuariosService = usuariosService;
         this.usuariosRepository = usuariosRepository;
@@ -119,35 +122,25 @@ public class AuthService {
         return login(login);
     }
 
+    // /auth/logout es una ruta pública (Spring Security no autentica el pedido), así que el token se lee acá
     public void logout(String authorization) {
-        tokensCerrados.values().removeIf(vence -> vence.isBefore(Instant.now()));
         try {
             Jwt jwt = jwtService.leer(token(authorization));
-            tokensCerrados.put(jwt.getId(), jwt.getExpiresAt());
+            tokensCerrados.cerrar(jwt.getId(), jwt.getExpiresAt());
         } catch (JwtException e) {
             // Token inválido o vencido: no hay nada que cerrar
         }
     }
 
-    // Recibe el header "Authorization: Bearer <token>". Un usuario dado de baja pierde el acceso
-    // al instante, aunque su token siga vigente, porque se consulta si sigue activo en cada pedido
-    public Sesion requerirSesion(String authorization) {
-        Jwt jwt;
-        try {
-            jwt = jwtService.leer(token(authorization));
-        } catch (JwtException e) {
-            throw sinSesion();
+    // Quién hace el pedido. Spring Security ya validó el token antes de llegar al controller
+    // (firma, vencimiento, usuario activo, no cerrado): acá solo se lee lo que dejó en el contexto
+    public Sesion requerirSesion() {
+        Authentication autenticacion = SecurityContextHolder.getContext().getAuthentication();
+        if (!(autenticacion instanceof JwtAuthenticationToken tokenAutenticado)) {
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Iniciá sesión para continuar");
         }
-        Long idUsuario = Long.valueOf(jwt.getSubject());
-        boolean activo = usuariosRepository.findById(idUsuario).map(UsuariosModel::isActivo).orElse(false);
-        if (tokensCerrados.containsKey(jwt.getId()) || !activo) {
-            throw sinSesion();
-        }
-        return new Sesion(idUsuario, jwt.getClaimAsString(JwtService.CLAIM_ROL));
-    }
-
-    private ResponseStatusException sinSesion() {
-        return new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Iniciá sesión para continuar");
+        Jwt jwt = tokenAutenticado.getToken();
+        return new Sesion(Long.valueOf(jwt.getSubject()), jwt.getClaimAsString(JwtService.CLAIM_ROL));
     }
 
     private void verificarNoBloqueado(String clave) {
@@ -176,16 +169,16 @@ public class AuthService {
         });
     }
 
-    public Sesion requerirManicurista(String authorization) {
-        Sesion sesion = requerirSesion(authorization);
+    public Sesion requerirManicurista() {
+        Sesion sesion = requerirSesion();
         if (!ROL_MANICURISTA.equals(sesion.getRol())) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Esta opción es solo para manicuristas");
         }
         return sesion;
     }
 
-    public Sesion requerirAdmin(String authorization) {
-        Sesion sesion = requerirSesion(authorization);
+    public Sesion requerirAdmin() {
+        Sesion sesion = requerirSesion();
         if (!ROL_ADMIN.equals(sesion.getRol())) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Esta opción es solo para el administrador");
         }
@@ -193,8 +186,8 @@ public class AuthService {
     }
 
     // Manicuristas y admin (los clientes quedan afuera)
-    public Sesion requerirPersonal(String authorization) {
-        Sesion sesion = requerirSesion(authorization);
+    public Sesion requerirPersonal() {
+        Sesion sesion = requerirSesion();
         if (ROL_CLIENTE.equals(sesion.getRol())) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "No tenés permiso para esta opción");
         }
