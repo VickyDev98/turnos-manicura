@@ -33,11 +33,10 @@ public class DisponibilidadController {
     // solo desde/hasta (sin motivos ni datos de otras personas)
     @GetMapping("/manicurista/{idManicurista}")
     public List<Intervalo> noDisponible(
-            @RequestHeader(value = "Authorization", required = false) String auth,
             @PathVariable int idManicurista,
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate fecha,
             @RequestParam(required = false) Long excluirTurno) {
-        authService.requerirSesion(auth);
+        authService.requerirSesion();
         List<Intervalo> todos = new ArrayList<>(service.noDisponible(idManicurista, fecha));
         todos.addAll(service.ocupadoPorTurnos(idManicurista, fecha, excluirTurno));
         return todos.stream()
@@ -48,45 +47,38 @@ public class DisponibilidadController {
     // Lo de abajo es de la manicurista que inició sesión: solo puede ver y editar lo suyo
 
     @GetMapping("/franjas")
-    public List<FranjaTrabajoModel> franjas(@RequestHeader(value = "Authorization", required = false) String auth) {
-        return service.listarFranjas(idPropio(auth));
+    public List<FranjaTrabajoModel> franjas() {
+        return service.listarFranjas(idPropio());
     }
 
     @PutMapping("/franjas")
-    public List<FranjaTrabajoModel> guardarFranjas(
-            @RequestHeader(value = "Authorization", required = false) String auth,
-            @Valid @RequestBody List<@Valid FranjaRequest> franjas) {
-        return service.guardarFranjas(idPropio(auth), franjas);
+    public List<FranjaTrabajoModel> guardarFranjas(@Valid @RequestBody List<@Valid FranjaRequest> franjas) {
+        return service.guardarFranjas(idPropio(), franjas);
     }
 
     @GetMapping("/bloqueos")
-    public List<BloqueoModel> bloqueos(@RequestHeader(value = "Authorization", required = false) String auth) {
-        return service.listarBloqueos(idPropio(auth));
+    public List<BloqueoModel> bloqueos() {
+        return service.listarBloqueos(idPropio());
     }
 
     @PostMapping("/bloqueos")
-    public BloqueoModel crearBloqueo(
-            @RequestHeader(value = "Authorization", required = false) String auth,
-            @Valid @RequestBody BloqueoRequest pedido) {
-        return service.crearBloqueo(idPropio(auth), pedido);
+    public BloqueoModel crearBloqueo(@Valid @RequestBody BloqueoRequest pedido) {
+        return service.crearBloqueo(idPropio(), pedido);
     }
 
     @PutMapping("/bloqueos/{id}")
     public BloqueoModel actualizarBloqueo(
-            @RequestHeader(value = "Authorization", required = false) String auth,
             @PathVariable Long id,
             @Valid @RequestBody BloqueoRequest pedido) {
-        return service.actualizarBloqueo(idPropio(auth), id, pedido);
+        return service.actualizarBloqueo(idPropio(), id, pedido);
     }
 
     @DeleteMapping("/bloqueos/{id}")
-    public void eliminarBloqueo(
-            @RequestHeader(value = "Authorization", required = false) String auth,
-            @PathVariable Long id) {
-        service.eliminarBloqueo(idPropio(auth), id);
+    public void eliminarBloqueo(@PathVariable Long id) {
+        service.eliminarBloqueo(idPropio(), id);
     }
 
-    private int idPropio(String authorization) {
-        return authService.requerirManicurista(authorization).getIdUsuario().intValue();
+    private int idPropio() {
+        return authService.requerirManicurista().getIdUsuario().intValue();
     }
 }
