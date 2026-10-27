@@ -74,11 +74,12 @@ Proyecto 2026/
 │       │   ├── dto/          # Objetos de entrada/salida de la API
 │       │   ├── exception/    # Validaciones y manejo global de errores
 │       │   └── config/       # Seguridad y CORS
+│       ├── main/resources/db/migration/     # Migraciones de Flyway (esquema): V1__..., V2__...
+│       ├── main/resources/db/datos-prueba/  # Datos de prueba, solo para desarrollo
 │       └── test/java/        # Tests unitarios de los servicios (JUnit 5 + Mockito)
 ├── frontend/                 # index.html, app.js, styles.css + Dockerfile (nginx)
 ├── scripts/
-│   ├── Turnos.sql            # Script único: crea la base y carga datos de prueba
-│   └── historial/            # Migraciones viejas (ya unificadas en Turnos.sql)
+│   └── historial/            # Scripts viejos (anteriores a Flyway, solo de consulta)
 ├── docker-compose.yml        # Levanta MySQL + backend + frontend
 └── .env.example              # Variables de entorno de ejemplo
 ```
@@ -106,7 +107,7 @@ La primera vez tarda unos minutos (descarga imágenes y compila el backend). Cua
 | Backend (API) | http://localhost:8080 |
 | MySQL | `localhost:3309` (usuario `root`, clave la de tu `.env`) |
 
-Antes de levantar, copiá `.env.example` como `.env` y poné tu clave de MySQL (es obligatoria). La base se crea y se carga sola con `scripts/Turnos.sql` la primera vez. Para apagar todo: `docker compose down`. Para **borrar también los datos y volver a empezar de cero**: `docker compose down -v`.
+Antes de levantar, copiá `.env.example` como `.env` y poné tu clave de MySQL (es obligatoria). El backend crea las tablas y carga los datos de prueba solo, con **Flyway**, la primera vez que arranca (ver "Cambios en la base de datos" más abajo). Si ya tenías una base creada con el sistema anterior (`Turnos.sql`), recreala con `docker compose down -v`. Para apagar todo: `docker compose down`. Para **borrar también los datos y volver a empezar de cero**: `docker compose down -v`.
 
 La clave de MySQL se define en `.env` (ver `.env.example`).
 
@@ -116,14 +117,20 @@ Los avisos están **apagados por defecto**: se activan al definir `SMTP_HOST` en
 
 Para **probarlos sin mandar mails de verdad** hay una casilla de prueba (Mailpit): poné `SMTP_HOST=mailpit` y `SMTP_PORT=1025` en `.env`, levantá con `docker compose --profile correo up --build` y mirá la bandeja en http://localhost:8025.
 
-El recordatorio se controla en `application.properties` (`app.recordatorios.horas-antes`, `app.recordatorios.intervalo-minutos`). Si ya tenías una base creada antes de esta función, agregale la columna con
-`ALTER TABLE turnos ADD COLUMN recordatorio_enviado BOOLEAN NOT NULL DEFAULT FALSE;` (o recreala con `docker compose down -v`).
+El recordatorio se controla en `application.properties` (`app.recordatorios.horas-antes`, `app.recordatorios.intervalo-minutos`).
+
+### 🗄️ Cambios en la base de datos (Flyway)
+
+El esquema se maneja con **migraciones**: archivos SQL numerados en `backend/src/main/resources/db/migration/` (`V1__esquema_inicial.sql`, `V2__...`). Al arrancar, el backend aplica solo las que la base todavía no tiene (las anota en la tabla `flyway_schema_history`).
+
+- **Para cambiar el esquema** (por ejemplo, agregar una columna): crear un archivo nuevo con el número siguiente, como `V2__agrega_columna_x.sql`, y escribir ahí el `ALTER TABLE`. **Nunca editar una migración ya aplicada**: Flyway lo detecta y el backend no arranca.
+- **Datos de prueba** (usuarios con clave `123456`, turnos de ejemplo): están aparte, en `db/datos-prueba/`, y solo se cargan si se agrega esa carpeta con la variable `FLYWAY_LOCATIONS`. Docker Compose ya lo hace; sin esa variable solo se aplica el esquema.
 
 ### Opción B: sin Docker
 Requisitos: JDK 17 y MySQL 8 en el puerto **3308** (o cambiá el puerto en `application.properties`).
 
-1. Ejecutá `scripts/Turnos.sql` en MySQL (⚠️ hace `DROP DATABASE IF EXISTS TURNOS`: borra y recrea la base).
-2. Definí la clave de MySQL en la variable de entorno `DB_PASSWORD` (opcionales: `DB_USER`, `DB_URL`) y corré:
+1. Creá la base vacía en MySQL: `CREATE DATABASE TURNOS;` (las tablas las crea Flyway al arrancar el backend).
+2. Definí la clave de MySQL en la variable de entorno `DB_PASSWORD` (opcionales: `DB_USER`, `DB_URL`). Para cargar también los datos de prueba, definí `FLYWAY_LOCATIONS=classpath:db/migration,classpath:db/datos-prueba`. Después corré:
    ```bash
    cd backend
    ./mvnw spring-boot:run        # en Windows: mvnw.cmd spring-boot:run
@@ -146,7 +153,7 @@ cd backend
 ./mvnw test -Dtest='*ServiceTest'     # solo los unitarios
 ```
 
-> H2 es otra base distinta de MySQL: el esquema de los tests sale de las entidades, no de `scripts/Turnos.sql`, así que estos tests no detectan diferencias entre ambos.
+> H2 es otra base distinta de MySQL: el esquema de los tests sale de las entidades, no de las migraciones de Flyway (que acá están apagadas), así que estos tests no detectan diferencias entre ambos.
 
 ---
 
