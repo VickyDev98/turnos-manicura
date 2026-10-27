@@ -29,52 +29,47 @@ public class ServiciosController {
 
     // Catálogo general de servicios
     @GetMapping
-    public List<ServiciosModel> listar(@RequestHeader(value = "Authorization", required = false) String auth) {
-        authService.requerirSesion(auth);
+    public List<ServiciosModel> listar() {
+        authService.requerirSesion();
         return service.listar();
     }
 
     // Los clientes solo consultan: crean servicios del catálogo las manicuristas y el admin
     @PostMapping
-    public ServiciosModel crear(@RequestHeader(value = "Authorization", required = false) String auth,
-                                @Valid @RequestBody ServiciosModel servicio) {
-        authService.requerirPersonal(auth);
+    public ServiciosModel crear(@Valid @RequestBody ServiciosModel servicio) {
+        authService.requerirPersonal();
         return service.guardar(servicio);
     }
 
     // Solo el admin edita o da de baja servicios del catálogo (las manicuristas manejan los suyos en /ofertas)
     @PutMapping("/{id}")
-    public ServiciosModel actualizar(@RequestHeader(value = "Authorization", required = false) String auth,
-                                     @PathVariable Long id,
+    public ServiciosModel actualizar(@PathVariable Long id,
                                      @Valid @RequestBody ServiciosModel servicio) {
-        authService.requerirAdmin(auth);
+        authService.requerirAdmin();
         return service.actualizar(id, servicio);
     }
 
     // Qué servicios ofrece cada manicurista y a qué precio
     @GetMapping("/ofertas")
-    public List<ServicioManicuristaModel> ofertas(@RequestHeader(value = "Authorization", required = false) String auth) {
-        return ofertaService.listarPara(authService.requerirSesion(auth));
+    public List<ServicioManicuristaModel> ofertas() {
+        return ofertaService.listarPara(authService.requerirSesion());
     }
 
     // Lo de abajo lo hace cada manicurista sobre sus propios servicios
 
     @PostMapping("/ofertas")
-    public ServicioManicuristaModel agregarOferta(
-            @RequestHeader(value = "Authorization", required = false) String auth,
-            @Valid @RequestBody OfertaRequest pedido) {
-        return ofertaService.agregar(idPropio(auth), pedido);
+    public ServicioManicuristaModel agregarOferta(@Valid @RequestBody OfertaRequest pedido) {
+        return ofertaService.agregar(idPropio(), pedido);
     }
 
     @PutMapping("/ofertas/{id}")
     public ServicioManicuristaModel actualizarOferta(
-            @RequestHeader(value = "Authorization", required = false) String auth,
             @PathVariable Long id,
             @Valid @RequestBody OfertaUpdate cambios) {
-        return ofertaService.actualizar(idPropio(auth), id, cambios);
+        return ofertaService.actualizar(idPropio(), id, cambios);
     }
 
-    private int idPropio(String authorization) {
-        return authService.requerirManicurista(authorization).getIdUsuario().intValue();
+    private int idPropio() {
+        return authService.requerirManicurista().getIdUsuario().intValue();
     }
 }

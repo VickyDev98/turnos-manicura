@@ -9,6 +9,7 @@ import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.options;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -160,6 +161,26 @@ class AuthIntegrationTest extends IntegrationTestBase {
                         .content(json(Map.of("activo", false))))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.activo").value(false));
+    }
+
+    @Test
+    void unTokenViejoEnElHeaderNoImpideIniciarSesion() throws Exception {
+        crearUsuario("CLIENTE", "token.viejo@test.com");
+
+        mockMvc.perform(post("/auth/login")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer token-que-ya-no-vale")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(json(Map.of("email", "token.viejo@test.com", "password", CLAVE))))
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    void elPreflightDeCorsNoPideSesion() throws Exception {
+        mockMvc.perform(options("/usuarios")
+                        .header(HttpHeaders.ORIGIN, "http://localhost:3000")
+                        .header(HttpHeaders.ACCESS_CONTROL_REQUEST_METHOD, "GET")
+                        .header(HttpHeaders.ACCESS_CONTROL_REQUEST_HEADERS, "authorization"))
+                .andExpect(status().isOk());
     }
 
     @Test

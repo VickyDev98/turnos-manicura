@@ -21,15 +21,14 @@ public class TiposUsuarioController {
     }
 
     @GetMapping
-    public List<TiposUsuarioModel> listar(@RequestHeader(value = "Authorization", required = false) String auth) {
-        authService.requerirSesion(auth);
+    public List<TiposUsuarioModel> listar() {
+        authService.requerirSesion();
         return service.listar();
     }
 
     @PostMapping
-    public TiposUsuarioModel crear(@RequestHeader(value = "Authorization", required = false) String auth,
-                                   @Valid @RequestBody TiposUsuarioModel tipoUsuario) {
-        authService.requerirAdmin(auth);
+    public TiposUsuarioModel crear(@Valid @RequestBody TiposUsuarioModel tipoUsuario) {
+        authService.requerirAdmin();
         return service.guardar(tipoUsuario);
     }
 

@@ -5,7 +5,6 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.oauth2.jose.jws.MacAlgorithm;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.security.oauth2.jwt.JwtClaimsSet;
-import org.springframework.security.oauth2.jwt.JwtDecoder;
 import org.springframework.security.oauth2.jwt.JwtEncoder;
 import org.springframework.security.oauth2.jwt.JwtEncoderParameters;
 import org.springframework.security.oauth2.jwt.JwsHeader;
@@ -32,8 +31,9 @@ public class JwtService {
     // HS256 exige una clave de al menos 256 bits (32 bytes)
     private static final int BYTES_MINIMOS_CLAVE = 32;
 
+    private final SecretKey clave;
     private final JwtEncoder encoder;
-    private final JwtDecoder decoder;
+    private final NimbusJwtDecoder decoder;
     private final Duration vigencia;
 
     public JwtService(@Value("${app.jwt.secret}") String secreto,
@@ -42,9 +42,9 @@ public class JwtService {
         if (bytes.length < BYTES_MINIMOS_CLAVE) {
             throw new IllegalStateException("JWT_SECRET debe tener al menos " + BYTES_MINIMOS_CLAVE + " caracteres");
         }
-        SecretKey clave = new SecretKeySpec(bytes, "HmacSHA256");
+        this.clave = new SecretKeySpec(bytes, "HmacSHA256");
         this.encoder = new NimbusJwtEncoder(new ImmutableSecret<>(clave));
-        this.decoder = NimbusJwtDecoder.withSecretKey(clave).macAlgorithm(MacAlgorithm.HS256).build();
+        this.decoder = crearDecoder();
         this.vigencia = Duration.ofMinutes(minutosVigencia);
     }
 
@@ -64,5 +64,10 @@ public class JwtService {
     // Lanza JwtException si el token está mal formado, la firma no coincide o ya venció
     public Jwt leer(String token) {
         return decoder.decode(token);
+    }
+
+    // Decoder nuevo con la misma clave: Spring Security lo usa para validar cada pedido (ver SecurityConfig)
+    public NimbusJwtDecoder crearDecoder() {
+        return NimbusJwtDecoder.withSecretKey(clave).macAlgorithm(MacAlgorithm.HS256).build();
     }
 }

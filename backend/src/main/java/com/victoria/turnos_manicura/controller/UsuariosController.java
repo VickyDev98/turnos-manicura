@@ -24,33 +24,30 @@ public class UsuariosController {
 
     // El admin ve todo; el resto ve los nombres (y los datos de contacto solo de las manicuristas y los propios)
     @GetMapping
-    public List<UsuariosModel> listar(@RequestHeader(value = "Authorization", required = false) String auth) {
-        return service.listarPara(authService.requerirSesion(auth));
+    public List<UsuariosModel> listar() {
+        return service.listarPara(authService.requerirSesion());
     }
 
     // Solo el admin crea usuarios desde el sistema (el resto se registra desde la pantalla de login)
     @PostMapping
-    public UsuariosModel crear(@RequestHeader(value = "Authorization", required = false) String auth,
-                               @Valid @RequestBody UsuariosModel usuario) {
-        authService.requerirAdmin(auth);
+    public UsuariosModel crear(@Valid @RequestBody UsuariosModel usuario) {
+        authService.requerirAdmin();
         return service.guardar(usuario);
     }
 
     // Edición de un usuario (solo el admin)
     @PutMapping("/{id}")
-    public UsuariosModel actualizar(@RequestHeader(value = "Authorization", required = false) String auth,
-                                    @PathVariable Long id,
+    public UsuariosModel actualizar(@PathVariable Long id,
                                     @Valid @RequestBody UsuarioUpdate datos) {
-        authService.requerirAdmin(auth);
+        authService.requerirAdmin();
         return service.actualizar(id, datos);
     }
 
     // Baja o reactivación (solo el admin). Al darlo de baja pierde el acceso enseguida: ver AuthService.requerirSesion
     @PutMapping("/{id}/activo")
-    public UsuariosModel cambiarActivo(@RequestHeader(value = "Authorization", required = false) String auth,
-                                       @PathVariable Long id,
+    public UsuariosModel cambiarActivo(@PathVariable Long id,
                                        @Valid @RequestBody ActivoRequest pedido) {
-        AuthService.Sesion admin = authService.requerirAdmin(auth);
+        AuthService.Sesion admin = authService.requerirAdmin();
         return service.cambiarActivo(id, pedido.getActivo(), admin.getIdUsuario());
     }
 }
