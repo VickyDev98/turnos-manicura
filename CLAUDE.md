@@ -10,11 +10,12 @@ Backend (desde `backend/`; en Windows `mvnw.cmd`):
 
 ```bash
 ./mvnw spring-boot:run                          # requiere MySQL en localhost:3308 y la variable DB_PASSWORD
-./mvnw test -Dtest='*ServiceTest'               # tests unitarios (Mockito, sin DB)
+./mvnw test                                     # todos los tests, sin MySQL (los de integración usan H2 en memoria)
+./mvnw test -Dtest='*ServiceTest'               # solo los unitarios (Mockito, rápidos)
 ./mvnw test -Dtest=TurnosServiceTest#nombreDelMetodo   # un solo test
 ```
 
-No correr `./mvnw test` a secas sin MySQL: `TurnosManicuraApplicationTests` levanta el contexto completo y necesita la base.
+Los tests de integración (`src/test/.../integration/`, heredan de `IntegrationTestBase`) levantan la app completa con `@ActiveProfiles("test")`: H2 en modo MySQL con `ddl-auto=create-drop`, esquema generado desde las entidades (no desde `Turnos.sql`) y `NotificacionesService` simulado. Cada test se deshace con rollback.
 
 Stack completo (requiere `.env` con `MYSQL_ROOT_PASSWORD`, ver `.env.example`): `docker compose up --build` desde la raíz (frontend :3000 vía nginx, API :8080, MySQL :3309). `docker compose down -v` borra los datos.
 
