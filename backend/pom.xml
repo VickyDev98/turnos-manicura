@@ -61,6 +61,16 @@
 			<scope>runtime</scope>
 		</dependency>
 
+		<!-- FLYWAY: migraciones de esquema (db/migration). flyway-mysql da soporte a MySQL 8 -->
+		<dependency>
+			<groupId>org.flywaydb</groupId>
+			<artifactId>flyway-core</artifactId>
+		</dependency>
+		<dependency>
+			<groupId>org.flywaydb</groupId>
+			<artifactId>flyway-mysql</artifactId>
+		</dependency>
+
 		<!-- LOMBOK -->
 		<dependency>
 			<groupId>org.projectlombok</groupId>
