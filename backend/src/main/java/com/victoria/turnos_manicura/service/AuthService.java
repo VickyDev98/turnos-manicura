@@ -8,16 +8,16 @@ import com.victoria.turnos_manicura.model.UsuariosModel;
 import com.victoria.turnos_manicura.repository.TiposUsuarioRepository;
 import com.victoria.turnos_manicura.repository.UsuariosRepository;
 import lombok.Getter;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.security.oauth2.jwt.Jwt;
+import org.springframework.security.oauth2.jwt.JwtException;
 import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.time.Duration;
 import java.time.Instant;
 import java.util.Map;
-import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
 @Service
@@ -30,13 +30,11 @@ public class AuthService {
     private static final int MAX_INTENTOS_FALLIDOS = 5;
     private static final Duration BLOQUEO_LOGIN = Duration.ofMinutes(15);
 
-    // Sesión en memoria: se pierde al reiniciar el backend y hay que volver a iniciar sesión.
-    // Vence por inactividad: cada uso la renueva (ver requerirSesion)
+    // Quién hace el pedido, leído del token JWT (ver requerirSesion)
     @Getter
     public static class Sesion {
         private final Long idUsuario;
         private final String rol;
-        private volatile Instant ultimoUso = Instant.now();
 
         public Sesion(Long idUsuario, String rol) {
             this.idUsuario = idUsuario;
@@ -50,18 +48,19 @@ public class AuthService {
         private Instant bloqueadoHasta;
     }
 
-    @Value("${app.sesion.minutos-inactividad:480}")
-    private long minutosInactividad = 480;
-
-    private final Map<String, Sesion> sesiones = new ConcurrentHashMap<>();
+    // Tokens cerrados con logout (id del token -> cuándo vence). Un JWT no se puede "borrar" porque el
+    // servidor no lo guarda, así que se anota acá hasta que venza solo. Se pierde al reiniciar el backend
+    private final Map<String, Instant> tokensCerrados = new ConcurrentHashMap<>();
     private final Map<String, Intentos> intentosLogin = new ConcurrentHashMap<>();
     private final UsuariosRepository usuariosRepository;
     private final TiposUsuarioRepository tiposRepository;
     private final PasswordEncoder passwordEncoder;
     private final UsuariosService usuariosService;
+    private final JwtService jwtService;
 
     public AuthService(UsuariosRepository usuariosRepository, TiposUsuarioRepository tiposRepository,
-                       PasswordEncoder passwordEncoder, UsuariosService usuariosService) {
+                       PasswordEncoder passwordEncoder, UsuariosService usuariosService, JwtService jwtService) {
+        this.jwtService = jwtService;
         this.usuariosService = usuariosService;
         this.usuariosRepository = usuariosRepository;
         this.tiposRepository = tiposRepository;
@@ -87,9 +86,7 @@ public class AuthService {
                 .map(t -> t.getDescripcion().toUpperCase())
                 .orElse("");
 
-        sesiones.values().removeIf(this::vencida);
-        String token = UUID.randomUUID().toString();
-        sesiones.put(token, new Sesion(usuario.getId(), rol));
+        String token = jwtService.emitir(usuario.getId(), rol);
 
         return new LoginResponse(token, usuario.getId(), usuario.getNombre(), usuario.getApellido(),
                 usuario.getEmail(), rol);
@@ -122,32 +119,35 @@ public class AuthService {
         return login(login);
     }
 
-    // Al dar de baja a un usuario se le cierran las sesiones abiertas
-    public void cerrarSesionesDe(Long idUsuario) {
-        sesiones.values().removeIf(s -> s.getIdUsuario().equals(idUsuario));
-    }
-
     public void logout(String authorization) {
-        sesiones.remove(token(authorization));
+        tokensCerrados.values().removeIf(vence -> vence.isBefore(Instant.now()));
+        try {
+            Jwt jwt = jwtService.leer(token(authorization));
+            tokensCerrados.put(jwt.getId(), jwt.getExpiresAt());
+        } catch (JwtException e) {
+            // Token inválido o vencido: no hay nada que cerrar
+        }
     }
 
-    // Recibe el header "Authorization: Bearer <token>"
+    // Recibe el header "Authorization: Bearer <token>". Un usuario dado de baja pierde el acceso
+    // al instante, aunque su token siga vigente, porque se consulta si sigue activo en cada pedido
     public Sesion requerirSesion(String authorization) {
-        String token = token(authorization);
-        Sesion sesion = sesiones.get(token);
-        if (sesion != null && vencida(sesion)) {
-            sesiones.remove(token);
-            sesion = null;
+        Jwt jwt;
+        try {
+            jwt = jwtService.leer(token(authorization));
+        } catch (JwtException e) {
+            throw sinSesion();
         }
-        if (sesion == null) {
-            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Iniciá sesión para continuar");
+        Long idUsuario = Long.valueOf(jwt.getSubject());
+        boolean activo = usuariosRepository.findById(idUsuario).map(UsuariosModel::isActivo).orElse(false);
+        if (tokensCerrados.containsKey(jwt.getId()) || !activo) {
+            throw sinSesion();
         }
-        sesion.ultimoUso = Instant.now();
-        return sesion;
+        return new Sesion(idUsuario, jwt.getClaimAsString(JwtService.CLAIM_ROL));
     }
 
-    private boolean vencida(Sesion sesion) {
-        return sesion.getUltimoUso().plus(Duration.ofMinutes(minutosInactividad)).isBefore(Instant.now());
+    private ResponseStatusException sinSesion() {
+        return new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Iniciá sesión para continuar");
     }
 
     private void verificarNoBloqueado(String clave) {

@@ -27,6 +27,8 @@ services:
       SPRING_DATASOURCE_URL: jdbc:mysql://mysql:3306/TURNOS
       SPRING_DATASOURCE_USERNAME: root
       SPRING_DATASOURCE_PASSWORD: ${MYSQL_ROOT_PASSWORD:?Definí MYSQL_ROOT_PASSWORD en un archivo .env (copiá .env.example)}
+      # Clave con la que se firman los tokens de sesión (JWT): al menos 32 caracteres. Ver .env.example
+      JWT_SECRET: ${JWT_SECRET:?Definí JWT_SECRET en el archivo .env (copiá .env.example)}
       # Migraciones + datos de prueba (usuarios con clave 123456, etc.). Para una base real, dejar solo db/migration
       FLYWAY_LOCATIONS: classpath:db/migration,classpath:db/datos-prueba
       # Avisos por mail: vacío = no se manda nada. Ver .env.example
