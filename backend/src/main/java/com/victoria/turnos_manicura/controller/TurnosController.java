@@ -31,25 +31,23 @@ public class TurnosController {
     }
 
     @GetMapping
-    public List<TurnosModel> listar(@RequestHeader(value = "Authorization", required = false) String authorization) {
-        return service.listarPara(authService.requerirSesion(authorization));
+    public List<TurnosModel> listar() {
+        return service.listarPara(authService.requerirSesion());
     }
 
     // Turnos de a una página (page desde 0). Filtros opcionales: idManicurista y momento
     // (TODOS, PROXIMOS o HISTORIAL: los que ya pasaron y los cancelados)
     @GetMapping("/pagina")
-    public Page<TurnosModel> pagina(@RequestHeader(value = "Authorization", required = false) String authorization,
-                                    @RequestParam(defaultValue = "0") int page,
+    public Page<TurnosModel> pagina(@RequestParam(defaultValue = "0") int page,
                                     @RequestParam(defaultValue = "20") int size,
                                     @RequestParam(required = false) Integer idManicurista,
                                     @RequestParam(defaultValue = "TODOS") FiltroMomento momento) {
-        return service.paginaPara(authService.requerirSesion(authorization), idManicurista, momento, page, size);
+        return service.paginaPara(authService.requerirSesion(), idManicurista, momento, page, size);
     }
 
     @PostMapping
-    public TurnosModel crear(@RequestHeader(value = "Authorization", required = false) String authorization,
-                             @Valid @RequestBody TurnosModel turno) {
-        AuthService.Sesion sesion = authService.requerirSesion(authorization);
+    public TurnosModel crear(@Valid @RequestBody TurnosModel turno) {
+        AuthService.Sesion sesion = authService.requerirSesion();
         // Una manicurista solo carga turnos propios
         if (AuthService.ROL_MANICURISTA.equals(sesion.getRol())) {
             turno.setIdManicurista(sesion.getIdUsuario().intValue());
@@ -62,34 +60,30 @@ public class TurnosController {
     }
 
     @PutMapping("/{id}/cancelar")
-    public TurnosModel cancelar(@RequestHeader(value = "Authorization", required = false) String authorization,
-                                @PathVariable Long id) {
-        return service.cancelar(id, authService.requerirSesion(authorization));
+    public TurnosModel cancelar(@PathVariable Long id) {
+        return service.cancelar(id, authService.requerirSesion());
     }
 
     // Marca (o corrige) que el cliente no se presentó a un turno que ya empezó. Solo manicuristas y admin
     @PutMapping("/{id}/asistencia")
-    public TurnosModel asistencia(@RequestHeader(value = "Authorization", required = false) String authorization,
-                                  @PathVariable Long id,
+    public TurnosModel asistencia(@PathVariable Long id,
                                   @Valid @RequestBody AsistenciaRequest pedido) {
-        return service.marcarAsistencia(id, pedido.getNoAsistio(), authService.requerirPersonal(authorization));
+        return service.marcarAsistencia(id, pedido.getNoAsistio(), authService.requerirPersonal());
     }
 
     // Mueve un turno a otro horario (lo puede hacer su cliente, su manicurista o el admin)
     @PutMapping("/{id}/reprogramar")
-    public TurnosModel reprogramar(@RequestHeader(value = "Authorization", required = false) String authorization,
-                                   @PathVariable Long id,
+    public TurnosModel reprogramar(@PathVariable Long id,
                                    @Valid @RequestBody ReprogramarRequest pedido) {
-        return service.reprogramar(id, pedido.getDiaHorario(), authService.requerirSesion(authorization));
+        return service.reprogramar(id, pedido.getDiaHorario(), authService.requerirSesion());
     }
 
     // Agenda del día de una manicurista (solo para manicuristas). Sin idManicurista devuelve la propia
     @GetMapping("/agenda")
     public List<AgendaBloque> agenda(
-            @RequestHeader(value = "Authorization", required = false) String authorization,
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate fecha,
             @RequestParam(required = false) Long idManicurista) {
-        AuthService.Sesion sesion = authService.requerirManicurista(authorization);
+        AuthService.Sesion sesion = authService.requerirManicurista();
         if (idManicurista != null && !idManicurista.equals(sesion.getIdUsuario())) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Solo podés ver tu propia agenda");
         }

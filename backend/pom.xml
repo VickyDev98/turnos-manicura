@@ -61,10 +61,10 @@
 			<scope>runtime</scope>
 		</dependency>
 
-		<!-- JWT: firma y lectura de tokens (Nimbus, la librería que usa Spring Security) -->
+		<!-- JWT: firma y lectura de tokens (Nimbus) + validación del header Bearer en cada pedido (Spring Security) -->
 		<dependency>
-			<groupId>org.springframework.security</groupId>
-			<artifactId>spring-security-oauth2-jose</artifactId>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-oauth2-resource-server</artifactId>
 		</dependency>
 
 		<!-- FLYWAY: migraciones de esquema (db/migration). flyway-mysql da soporte a MySQL 8 -->
