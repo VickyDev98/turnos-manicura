@@ -48,11 +48,21 @@ public class TurnosModel {
     @Column(name = "recordatorio_enviado", nullable = false)
     private boolean recordatorioEnviado;
 
-    // PROXIMO, REALIZADO (activo y su horario ya pasó) o CANCELADO. Se calcula, no se guarda
+    // La manicurista marcó que el cliente no se presentó (solo aplica a turnos activos que ya empezaron).
+    // Solo lo maneja el backend: no se acepta desde el body al reservar
+    @JsonIgnore
+    @Column(name = "no_asistio", nullable = false)
+    private boolean noAsistio;
+
+    // PROXIMO, REALIZADO (activo y su horario ya pasó), NO_ASISTIO (activo, pasado y marcado) o CANCELADO.
+    // Se calcula, no se guarda
     @JsonProperty(access = JsonProperty.Access.READ_ONLY)
     public String getEstado() {
         if (!activo) {
             return "CANCELADO";
+        }
+        if (noAsistio) {
+            return "NO_ASISTIO";
         }
         return diaHorario != null && diaHorario.isBefore(LocalDateTime.now()) ? "REALIZADO" : "PROXIMO";
     }

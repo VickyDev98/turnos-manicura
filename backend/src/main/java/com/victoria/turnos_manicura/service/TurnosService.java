@@ -166,6 +166,7 @@ public class TurnosService {
 
         turno.setActivo(true);
         turno.setRecordatorioEnviado(false);
+        turno.setNoAsistio(false);
 
         TurnosModel guardado = repository.save(turno);
         notificaciones.turnoReservado(guardado);
@@ -215,6 +216,21 @@ public class TurnosService {
         TurnosModel guardado = repository.save(turno);
         notificaciones.turnoCancelado(guardado, sesion.getIdUsuario());
         return guardado;
+    }
+
+    // La manicurista del turno (o el admin) marca si el cliente no se presentó; con false se corrige un error.
+    // Solo turnos activos que ya empezaron. Quién puede llamarlo (personal, no clientes) lo valida el controller
+    public TurnosModel marcarAsistencia(Long id, boolean noAsistio, AuthService.Sesion sesion) {
+        TurnosModel turno = turnoPropio(id, sesion, "marcar la asistencia de");
+        if (!turno.isActivo()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "No se puede marcar la asistencia de un turno cancelado");
+        }
+        if (turno.getDiaHorario().isAfter(LocalDateTime.now())) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "El turno todavía no empezó");
+        }
+
+        turno.setNoAsistio(noAsistio);
+        return repository.save(turno);
     }
 
     // Los clientes cancelan o reprograman con anticipación (mover un turno a último momento libera el horario igual

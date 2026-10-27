@@ -37,6 +37,7 @@ También podés crear tu propia cuenta de cliente o manicurista desde **"¿No te
 - **Agenda visual del día** (ocupado / libre) y **calendario** para el cliente.
 - **Estado e historial de turnos:** cada turno es `PROXIMO`, `REALIZADO` (activo y su horario ya pasó) o `CANCELADO`, calculado solo. La tabla de turnos tiene un selector Todos / Próximos / Historial, para todos los roles.
 - **Cancelar y reprogramar** turnos. Un cliente solo puede cancelar o reprogramar con **24 hs de anticipación** respecto del horario actual del turno (`app.turnos.horas-minimas-cancelacion`, 0 = sin límite); la manicurista y el admin pueden siempre.
+- **Asistencia:** la manicurista (o el admin) puede marcar "No asistió" en un turno que ya empezó, y corregirlo si fue un error. El estado del turno pasa a `NO_ASISTIO` y queda en el historial.
 - **Avisos y recordatorios por mail:** al reservar, cancelar o reprogramar un turno se avisa a la otra parte (manicurista o cliente), y el cliente recibe un **recordatorio 24 hs antes**, una sola vez por horario. Los mails salen en segundo plano y, si fallan, no afectan la operación. Si no hay servidor de correo configurado, no se manda nada. Ver [Avisos por mail](#-avisos-por-mail).
 - **Administración de usuarios** con baja lógica: un usuario dado de baja no puede iniciar sesión y se le cierran las sesiones abiertas.
 - **Manejo centralizado de errores:** los mensajes de validación llegan al frontend y se muestran al usuario.
@@ -135,7 +136,7 @@ Iniciá sesión con alguno de los usuarios de la tabla de arriba.
 
 ## 🧪 Tests
 
-Hay **133 tests unitarios** de la capa de servicios (`AuthService`, `TurnosService`, `DisponibilidadService`, `UsuariosService`, `ServiciosService`, `NotificacionesService`, `RecordatoriosService`), escritos con **JUnit 5 y Mockito**: los repositorios se simulan, así que corren en segundos y sin base de datos. Cubren las reglas de negocio: superposición de turnos, horarios de trabajo, repeticiones de bloqueos, permisos por rol, validaciones de usuarios y sesiones.
+Hay **141 tests unitarios** de la capa de servicios (`AuthService`, `TurnosService`, `DisponibilidadService`, `UsuariosService`, `ServiciosService`, `NotificacionesService`, `RecordatoriosService`), escritos con **JUnit 5 y Mockito**: los repositorios se simulan, así que corren en segundos y sin base de datos. Cubren las reglas de negocio: superposición de turnos, horarios de trabajo, repeticiones de bloqueos, permisos por rol, validaciones de usuarios y sesiones.
 
 Además hay **tests de integración** (`src/test/.../integration/`) que levantan la aplicación completa (filtro de sesión, controllers, services y repositorios) y le mandan pedidos HTTP simulados con **MockMvc**. Usan una base **H2 en memoria**, así que tampoco necesitan MySQL ni Docker. Cubren login, registro, bloqueo por intentos fallidos, rutas protegidas por rol, el listado paginado de turnos (por rol y por momento) y la cancelación con anticipación.
 
@@ -154,7 +155,7 @@ cd backend
 | Recurso | Endpoints |
 |---|---|
 | Auth | `POST /auth/login`, `POST /auth/registro`, `POST /auth/logout` |
-| Turnos | `GET/POST /turnos`, `GET /turnos/pagina?page=0&size=20&idManicurista=&momento=` (paginado; `momento` = `TODOS`, `PROXIMOS` o `HISTORIAL`), `PUT /turnos/{id}/cancelar`, `PUT /turnos/{id}/reprogramar`, `GET /turnos/agenda` |
+| Turnos | `GET/POST /turnos`, `GET /turnos/pagina?page=0&size=20&idManicurista=&momento=` (paginado; `momento` = `TODOS`, `PROXIMOS` o `HISTORIAL`), `PUT /turnos/{id}/cancelar`, `PUT /turnos/{id}/reprogramar`, `PUT /turnos/{id}/asistencia` (la manicurista del turno o el admin marcan `{"noAsistio": true}` o lo corrigen con `false`), `GET /turnos/agenda` |
 | Disponibilidad | `GET /disponibilidad/manicurista/{id}`, `GET/PUT /disponibilidad/franjas`, `GET/POST/PUT/DELETE /disponibilidad/bloqueos` |
 | Servicios | `GET/POST/PUT /servicios`, `GET/POST/PUT /servicios/ofertas` |
 | Usuarios | `GET/POST /usuarios`, `PUT /usuarios/{id}`, `PUT /usuarios/{id}/activo` |
