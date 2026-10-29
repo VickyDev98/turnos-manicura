@@ -12,6 +12,7 @@ import jakarta.validation.Valid;
 import org.springframework.data.domain.Page;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.server.ResponseStatusException;
 import org.springframework.web.bind.annotation.*;
 
@@ -65,10 +66,11 @@ public class TurnosController {
     }
 
     // Marca (o corrige) que el cliente no se presentó a un turno que ya empezó. Solo manicuristas y admin
+    @PreAuthorize("hasAnyRole('ADMIN', 'MANICURISTA')")
     @PutMapping("/{id}/asistencia")
     public TurnosModel asistencia(@PathVariable Long id,
                                   @Valid @RequestBody AsistenciaRequest pedido) {
-        return service.marcarAsistencia(id, pedido.getNoAsistio(), authService.requerirPersonal());
+        return service.marcarAsistencia(id, pedido.getNoAsistio(), authService.requerirSesion());
     }
 
     // Mueve un turno a otro horario (lo puede hacer su cliente, su manicurista o el admin)
@@ -79,11 +81,12 @@ public class TurnosController {
     }
 
     // Agenda del día de una manicurista (solo para manicuristas). Sin idManicurista devuelve la propia
+    @PreAuthorize("hasRole('MANICURISTA')")
     @GetMapping("/agenda")
     public List<AgendaBloque> agenda(
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate fecha,
             @RequestParam(required = false) Long idManicurista) {
-        AuthService.Sesion sesion = authService.requerirManicurista();
+        AuthService.Sesion sesion = authService.requerirSesion();
         if (idManicurista != null && !idManicurista.equals(sesion.getIdUsuario())) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Solo podés ver tu propia agenda");
         }

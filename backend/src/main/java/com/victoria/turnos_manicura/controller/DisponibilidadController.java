@@ -9,6 +9,7 @@ import com.victoria.turnos_manicura.service.AuthService;
 import com.victoria.turnos_manicura.service.DisponibilidadService;
 import jakarta.validation.Valid;
 import org.springframework.format.annotation.DateTimeFormat;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDate;
@@ -46,26 +47,31 @@ public class DisponibilidadController {
 
     // Lo de abajo es de la manicurista que inició sesión: solo puede ver y editar lo suyo
 
+    @PreAuthorize("hasRole('MANICURISTA')")
     @GetMapping("/franjas")
     public List<FranjaTrabajoModel> franjas() {
         return service.listarFranjas(idPropio());
     }
 
+    @PreAuthorize("hasRole('MANICURISTA')")
     @PutMapping("/franjas")
     public List<FranjaTrabajoModel> guardarFranjas(@Valid @RequestBody List<@Valid FranjaRequest> franjas) {
         return service.guardarFranjas(idPropio(), franjas);
     }
 
+    @PreAuthorize("hasRole('MANICURISTA')")
     @GetMapping("/bloqueos")
     public List<BloqueoModel> bloqueos() {
         return service.listarBloqueos(idPropio());
     }
 
+    @PreAuthorize("hasRole('MANICURISTA')")
     @PostMapping("/bloqueos")
     public BloqueoModel crearBloqueo(@Valid @RequestBody BloqueoRequest pedido) {
         return service.crearBloqueo(idPropio(), pedido);
     }
 
+    @PreAuthorize("hasRole('MANICURISTA')")
     @PutMapping("/bloqueos/{id}")
     public BloqueoModel actualizarBloqueo(
             @PathVariable Long id,
@@ -73,12 +79,13 @@ public class DisponibilidadController {
         return service.actualizarBloqueo(idPropio(), id, pedido);
     }
 
+    @PreAuthorize("hasRole('MANICURISTA')")
     @DeleteMapping("/bloqueos/{id}")
     public void eliminarBloqueo(@PathVariable Long id) {
         service.eliminarBloqueo(idPropio(), id);
     }
 
     private int idPropio() {
-        return authService.requerirManicurista().getIdUsuario().intValue();
+        return authService.requerirSesion().getIdUsuario().intValue();
     }
 }
