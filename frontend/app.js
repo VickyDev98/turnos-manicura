@@ -722,52 +722,62 @@ function renderTurnos() {
 
 // ---------- Agenda (manicuristas) ----------
 
-// Barra de 06:00 a 23:00: verde = disponible, rojo = ocupado
-function renderAgenda(bloques, fecha) {
-  const total = CIERRE_MIN - APERTURA_MIN;
-  const pct = (min) => ((min - APERTURA_MIN) / total) * 100;
+const pctAgenda = (min) => ((min - APERTURA_MIN) / (CIERRE_MIN - APERTURA_MIN)) * 100;
+
+// Pasa los bloques del backend a minutos del día, recortados al horario de atención
+// (los que quedan fuera se descartan)
+function bloquesDelDia(bloques, fecha) {
   const inicioDia = new Date(`${fecha}T00:00:00`);
   const minutosDelDia = (date) => Math.round((date - inicioDia) / 60000);
-
-  // Se recortan al horario de atención y se descartan los que quedan fuera
-  const todos = bloques
+  return bloques
     .map((b) => ({
       ...b,
       desde: Math.max(minutosDelDia(fechaDeBackend(b.inicio)), APERTURA_MIN),
       hasta: Math.min(minutosDelDia(fechaDeBackend(b.fin)), CIERRE_MIN),
     }))
     .filter((b) => b.hasta > b.desde);
+}
 
-  // Rojo = turnos reservados; gris = bloqueos y horas fuera del horario de trabajo
-  const ocupados = todos.filter((b) => b.tipo === 'TURNO');
-  const noDisponibles = todos.filter((b) => b.tipo === 'NO_DISPONIBLE');
-
-  const barra = $('#agendaBarra');
-  barra.innerHTML = todos.map((b) => {
+// Los tramos dentro de la barra. Rojo = turnos reservados; gris = bloqueos y horas fuera del horario de trabajo
+function htmlBloques(bloques, conTexto) {
+  return bloques.map((b) => {
     const turno = b.tipo === 'TURNO';
     const rango = `${minutosAHHMM(b.desde)}–${minutosAHHMM(b.hasta)}`;
     const titulo = turno ? `${rango} · ${b.cliente} · ${b.servicio}` : `${rango} · ${b.servicio}`;
-    const texto = b.hasta - b.desde >= 60 ? (turno ? rango : b.servicio) : '';
+    const texto = conTexto && b.hasta - b.desde >= 60 ? (turno ? rango : b.servicio) : '';
     return `
-    <div class="agenda-bloque ${turno ? '' : 'nodisp'}" style="left:${pct(b.desde)}%;width:${pct(b.hasta) - pct(b.desde)}%"
+    <div class="agenda-bloque ${turno ? '' : 'nodisp'}" style="left:${pctAgenda(b.desde)}%;width:${pctAgenda(b.hasta) - pctAgenda(b.desde)}%"
          title="${esc(titulo)}">${esc(texto)}</div>`;
   }).join('');
+}
 
-  // Línea de "ahora" solo si se está mirando el día de hoy
-  if (fecha === hoy()) {
-    const ahora = new Date();
-    const min = ahora.getHours() * 60 + ahora.getMinutes();
-    if (min >= APERTURA_MIN && min <= CIERRE_MIN) {
-      barra.insertAdjacentHTML('beforeend',
-        `<div class="agenda-ahora" style="left:${pct(min)}%" title="Ahora (${hhmm(ahora)})"></div>`);
-    }
-  }
+// Línea de "ahora": solo si se está mirando el día de hoy y estamos dentro del horario de atención
+function htmlAhora(fecha) {
+  if (fecha !== hoy()) return '';
+  const ahora = new Date();
+  const min = ahora.getHours() * 60 + ahora.getMinutes();
+  if (min < APERTURA_MIN || min > CIERRE_MIN) return '';
+  return `<div class="agenda-ahora" style="left:${pctAgenda(min)}%" title="Ahora (${hhmm(ahora)})"></div>`;
+}
 
+// El eje de las horas (06, 07, ... 23) que va debajo de la barra
+function htmlEjeHoras() {
   let horas = '';
   for (let h = APERTURA_MIN / 60; h <= CIERRE_MIN / 60; h++) {
-    horas += `<span style="left:${pct(h * 60)}%">${pad2(h)}</span>`;
+    horas += `<span style="left:${pctAgenda(h * 60)}%">${pad2(h)}</span>`;
   }
-  $('#agendaHoras').innerHTML = horas;
+  return horas;
+}
+
+// Un día con su barra de 06:00 a 23:00 (verde = disponible, rojo = ocupado) y el detalle de abajo
+function renderAgenda(bloques, fecha) {
+  const todos = bloquesDelDia(bloques, fecha);
+  const ocupados = todos.filter((b) => b.tipo === 'TURNO');
+  const noDisponibles = todos.filter((b) => b.tipo === 'NO_DISPONIBLE');
+
+  $('#agendaFechaGrande').textContent = textoDeDia(fecha);
+  $('#agendaBarra').innerHTML = htmlBloques(todos, true) + htmlAhora(fecha);
+  $('#agendaHoras').innerHTML = htmlEjeHoras();
 
   // Tramos libres = lo que queda entre los ocupados
   const libres = [];
@@ -799,20 +809,109 @@ function renderAgenda(bloques, fecha) {
     </div>`;
 }
 
+// ---- Semana ----
+
+const DIAS_CORTOS = ['dom', 'lun', 'mar', 'mié', 'jue', 'vie', 'sáb'];
+
+// Suma (o resta) días a una fecha 'YYYY-MM-DD' y devuelve otra en el mismo formato
+function sumarDias(fecha, dias) {
+  const [anio, mes, dia] = fecha.split('-').map(Number);
+  return new Date(anio, mes - 1, dia + dias).toLocaleDateString('en-CA');
+}
+
+// 'Jueves 29 de octubre' (según el navegador, el formato trae una coma después del día: se saca)
+function textoDeDia(fecha) {
+  const texto = new Date(`${fecha}T00:00:00`)
+    .toLocaleDateString('es-AR', { weekday: 'long', day: 'numeric', month: 'long' })
+    .replace(',', '');
+  return texto.charAt(0).toUpperCase() + texto.slice(1);
+}
+
+// 'jue 29/10'
+function etiquetaDeDia(fecha) {
+  const d = new Date(`${fecha}T00:00:00`);
+  return `${DIAS_CORTOS[d.getDay()]} ${pad2(d.getDate())}/${pad2(d.getMonth() + 1)}`;
+}
+
+// Primer día de la semana que se está mirando; null = hoy (así sigue siendo "hoy" aunque pase la medianoche)
+let semanaDesde = null;
+
+function renderSemana(dias) {
+  const desde = dias[0].fecha;
+  const hasta = dias[dias.length - 1].fecha;
+  $('#semanaRango').textContent = `${etiquetaDeDia(desde)} al ${etiquetaDeDia(hasta)}`;
+
+  const filas = dias.map(({ fecha, bloques }) => {
+    const todos = bloquesDelDia(bloques, fecha);
+    const turnos = todos.filter((b) => b.tipo === 'TURNO').length;
+    const resumen = turnos === 0 ? 'Sin turnos' : `${turnos} ${turnos === 1 ? 'turno' : 'turnos'}`;
+    return `
+      <button type="button" class="semana-fila ${fecha === hoy() ? 'hoy' : ''}" data-agenda-dia="${fecha}"
+              title="Ver el detalle de ${esc(textoDeDia(fecha))}">
+        <span class="semana-dia">${etiquetaDeDia(fecha)}<small>${resumen}</small></span>
+        <div class="agenda-barra chica">${htmlBloques(todos, false)}${htmlAhora(fecha)}</div>
+      </button>`;
+  }).join('');
+
+  $('#semanaGrilla').innerHTML = `
+    <div class="semana-fila"><span></span><div class="agenda-horas">${htmlEjeHoras()}</div></div>
+    ${filas}`;
+}
+
+function avisarErrorDeAgenda(e) {
+  toast(e.message === 'Failed to fetch' ? 'No se pudo conectar con el backend' : e.message, true);
+}
+
+async function cargarSemana() {
+  if (!esManicurista()) return;
+  try {
+    renderSemana(await get(`/turnos/agenda/semana?desde=${semanaDesde ?? hoy()}`));
+  } catch (e) {
+    avisarErrorDeAgenda(e);
+  }
+}
+
+// Sin fecha elegida se ve la semana y el día de hoy; con una fecha elegida, solo ese día
 async function cargarAgenda() {
   const idManicurista = $('#agendaManicurista').value;
-  const fecha = $('#agendaFecha').value;
-  if (!esManicurista() || !idManicurista || !fecha) return;
+  if (!esManicurista() || !idManicurista) return;
+  const fechaElegida = $('#agendaFecha').value;
+  const fecha = fechaElegida || hoy();
+  $('#agendaSemana').hidden = Boolean(fechaElegida);
+  $('#agendaVerSemana').hidden = !fechaElegida;
   try {
-    const bloques = await get(`/turnos/agenda?fecha=${fecha}&idManicurista=${idManicurista}`);
-    renderAgenda(bloques, fecha);
+    renderAgenda(await get(`/turnos/agenda?fecha=${fecha}&idManicurista=${idManicurista}`), fecha);
   } catch (e) {
-    toast(e.message === 'Failed to fetch' ? 'No se pudo conectar con el backend' : e.message, true);
+    avisarErrorDeAgenda(e);
   }
+  if (!fechaElegida) await cargarSemana();
 }
 
 $('#agendaManicurista').addEventListener('change', cargarAgenda);
 $('#agendaFecha').addEventListener('change', cargarAgenda);
+
+// Flechas: de 7 en 7 días. "Hoy" vuelve a la semana actual
+function moverSemana(dias) {
+  semanaDesde = sumarDias(semanaDesde ?? hoy(), dias);
+  cargarSemana();
+}
+$('#semanaAnterior').addEventListener('click', () => moverSemana(-7));
+$('#semanaSiguiente').addEventListener('click', () => moverSemana(7));
+$('#semanaHoy').addEventListener('click', () => { semanaDesde = null; cargarSemana(); });
+
+// Tocar un día de la semana abre el detalle de ese día (como si lo hubiera buscado con la fecha)
+$('#semanaGrilla').addEventListener('click', (e) => {
+  const fila = e.target.closest('[data-agenda-dia]');
+  if (!fila) return;
+  $('#agendaFecha').value = fila.dataset.agendaDia;
+  cargarAgenda();
+});
+
+// Vuelve a la vista de la semana: se borra la fecha buscada
+$('#agendaVerSemana').addEventListener('click', () => {
+  $('#agendaFecha').value = '';
+  cargarAgenda();
+});
 
 async function cancelarDesdeClick(e) {
   if (e.target.dataset.reprogramar) return abrirReprogramar(e.target.dataset.reprogramar);
@@ -1501,7 +1600,9 @@ function iniciarSesion(sesion) {
   $('#btnLogout').hidden = false;
   $('#loginOverlay').hidden = true;
 
-  $('#agendaFecha').value = hoy();
+  // Sin fecha elegida la agenda muestra la semana y el día de hoy
+  $('#agendaFecha').value = '';
+  semanaDesde = null;
   const TAB_INICIAL = { MANICURISTA: 'agenda', CLIENTE: 'misTurnos', ADMIN: 'turnos' };
   mostrarTab($(`.tab[data-tab="${TAB_INICIAL[sesion.rol] ?? 'turnos'}"]`));
   cargarTodo();
