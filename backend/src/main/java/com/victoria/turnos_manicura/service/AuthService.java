@@ -169,31 +169,6 @@ public class AuthService {
         });
     }
 
-    public Sesion requerirManicurista() {
-        Sesion sesion = requerirSesion();
-        if (!ROL_MANICURISTA.equals(sesion.getRol())) {
-            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Esta opción es solo para manicuristas");
-        }
-        return sesion;
-    }
-
-    public Sesion requerirAdmin() {
-        Sesion sesion = requerirSesion();
-        if (!ROL_ADMIN.equals(sesion.getRol())) {
-            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Esta opción es solo para el administrador");
-        }
-        return sesion;
-    }
-
-    // Manicuristas y admin (los clientes quedan afuera)
-    public Sesion requerirPersonal() {
-        Sesion sesion = requerirSesion();
-        if (ROL_CLIENTE.equals(sesion.getRol())) {
-            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "No tenés permiso para esta opción");
-        }
-        return sesion;
-    }
-
     private String token(String authorization) {
         if (authorization == null || !authorization.startsWith("Bearer ")) {
             return "";
