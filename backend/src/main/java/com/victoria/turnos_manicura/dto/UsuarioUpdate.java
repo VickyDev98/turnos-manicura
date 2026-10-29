@@ -19,8 +19,9 @@ public class UsuarioUpdate {
     @Pattern(regexp = "^[\\p{L} '.-]+$", message = "El apellido solo puede tener letras")
     private String apellido;
 
-    @PositiveOrZero(message = "El teléfono no puede ser negativo")
-    private int numeroContacto;
+    // Vacío o ausente = sin teléfono
+    @Size(max = 20, message = "El teléfono no puede superar los 20 caracteres")
+    private String numeroContacto;
 
     @NotBlank(message = "El email es obligatorio")
     @Email(message = "El email no tiene un formato válido")
