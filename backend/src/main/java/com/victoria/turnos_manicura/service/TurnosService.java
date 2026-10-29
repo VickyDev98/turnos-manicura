@@ -1,6 +1,7 @@
 package com.victoria.turnos_manicura.service;
 
 import com.victoria.turnos_manicura.dto.AgendaBloque;
+import com.victoria.turnos_manicura.dto.AgendaDia;
 import com.victoria.turnos_manicura.dto.Intervalo;
 import com.victoria.turnos_manicura.exception.ValidacionException;
 import com.victoria.turnos_manicura.model.FiltroMomento;
@@ -34,6 +35,7 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 import java.util.stream.Stream;
 
 @Service
@@ -49,6 +51,9 @@ public class TurnosService {
 
     // Tope de turnos por página, para que no se pueda pedir todo de una vez con un size enorme
     private static final int TAMANIO_MAXIMO_PAGINA = 100;
+
+    // Cuántos días trae la agenda semanal (ver agendaSemana)
+    private static final int DIAS_DE_LA_SEMANA = 7;
 
     // Anticipación mínima con la que un cliente puede cancelar o reprogramar su turno (0 = sin límite)
     @Value("${app.turnos.horas-minimas-cancelacion:24}")
@@ -274,6 +279,14 @@ public class TurnosService {
 
         bloques.sort(Comparator.comparing(AgendaBloque::getInicio));
         return bloques;
+    }
+
+    // La agenda de los 7 días que arrancan en "desde" (hoy y los 6 siguientes en la pantalla de la manicurista)
+    public List<AgendaDia> agendaSemana(int idManicurista, LocalDate desde) {
+        return IntStream.range(0, DIAS_DE_LA_SEMANA)
+                .mapToObj(desde::plusDays)
+                .map(fecha -> new AgendaDia(fecha, agenda(idManicurista, fecha)))
+                .collect(Collectors.toList());
     }
 
     // Busca el turno y comprueba que sea de quien lo toca (o del admin)

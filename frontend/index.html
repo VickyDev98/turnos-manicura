@@ -93,9 +93,30 @@
 
     <!-- AGENDA -->
     <section id="agenda" class="panel">
+      <!-- Los 7 días desde hoy (o desde la semana elegida con las flechas). Se oculta al buscar un día puntual -->
+      <div class="card" id="agendaSemana">
+        <div class="card-head">
+          <h2>Agenda de la semana</h2>
+          <span id="semanaRango" class="fecha-agenda"></span>
+          <div class="semana-nav">
+            <button type="button" class="btn-flecha" id="semanaAnterior" aria-label="Semana anterior" title="Semana anterior">‹</button>
+            <button type="button" class="btn-hoy" id="semanaHoy" title="Volver a la semana de hoy">Hoy</button>
+            <button type="button" class="btn-flecha" id="semanaSiguiente" aria-label="Semana siguiente" title="Semana siguiente">›</button>
+          </div>
+        </div>
+        <div class="agenda-leyenda">
+          <span><i class="dot libre"></i> Disponible</span>
+          <span><i class="dot ocupado"></i> Ocupado</span>
+          <span><i class="dot nodisp"></i> No disponible</span>
+          <span class="ayuda-inline">Tocá un día para ver el detalle</span>
+        </div>
+        <div id="semanaGrilla" class="semana-grilla"></div>
+      </div>
+
       <div class="card">
         <div class="card-head">
           <h2>Agenda del día</h2>
+          <span id="agendaFechaGrande" class="fecha-agenda"></span>
           <div class="agenda-filtros">
             <label class="inline" data-solo="ADMIN">Manicurista
               <select id="agendaManicurista"></select>
@@ -103,6 +124,7 @@
             <label class="inline">Fecha
               <input type="date" id="agendaFecha">
             </label>
+            <button type="button" class="btn-texto" id="agendaVerSemana" hidden>Ver la semana</button>
           </div>
         </div>
         <div class="agenda-leyenda">

@@ -209,7 +209,56 @@ td.empty { text-align: center; color: var(--muted); padding: 24px; }
   --ocupado: #e53935;
 }
 
-.agenda-filtros { display: flex; flex-wrap: wrap; gap: 12px; }
+.agenda-filtros { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
+
+/* La fecha (o el rango de la semana) de la agenda: mismo tamaño, grosor y color que el título de la tarjeta,
+   centrada en el espacio libre entre el título (izquierda) y los filtros o flechas (derecha) */
+.fecha-agenda { flex: 1 1 200px; text-align: center; font-size: 1.15rem; font-weight: bold; }
+
+/* Flechas para cambiar de semana y botón "Hoy" */
+.semana-nav { display: flex; align-items: center; gap: 8px; }
+.btn-flecha, .btn-hoy {
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--primary);
+  border-radius: 8px;
+  cursor: pointer;
+  font-weight: 600;
+}
+.btn-flecha { width: 40px; height: 40px; font-size: 1.6rem; line-height: 1; padding: 0 0 4px; }
+.btn-hoy { height: 40px; padding: 0 16px; font-size: .9rem; }
+.btn-flecha:hover, .btn-hoy:hover { background: var(--bg); border-color: var(--primary); }
+.ayuda-inline { margin-left: auto; font-style: italic; }
+
+/* Semana: una fila por día con su barra de 06 a 23 hs (la primera fila es solo el eje de las horas) */
+.semana-grilla { display: grid; gap: 6px; }
+.semana-fila {
+  display: grid;
+  grid-template-columns: 110px 1fr;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 4px 6px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: none;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+}
+button.semana-fila { cursor: pointer; }
+button.semana-fila:hover { background: var(--bg); border-color: var(--border); }
+.semana-fila.hoy { background: #fce4ec; }
+.semana-dia { display: flex; flex-direction: column; font-weight: 600; font-size: .9rem; }
+.semana-dia small { font-weight: 400; color: var(--muted); font-size: .75rem; }
+.semana-fila.hoy .semana-dia { color: var(--primary); }
+.semana-fila .agenda-horas { margin-top: 0; height: 16px; }
+.agenda-barra.chica { height: 30px; }
+.agenda-barra.chica .agenda-bloque { font-size: .7rem; }
+
+@media (max-width: 640px) {
+  .semana-fila { grid-template-columns: 78px 1fr; gap: 8px; }
+}
 .agenda-leyenda { display: flex; gap: 18px; margin-bottom: 10px; font-size: .85rem; color: var(--muted); }
 .dot { display: inline-block; width: 12px; height: 12px; border-radius: 3px; margin-right: 4px; vertical-align: -1px; }
 .dot.libre { background: var(--libre); }
