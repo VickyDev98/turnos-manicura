@@ -31,10 +31,10 @@ public class UsuariosModel {
     @Pattern(regexp = "^[\\p{L} '.-]+$", message = "El apellido solo puede tener letras")
     private String apellido;
 
-    // 0 = sin teléfono. La columna es INT, por eso el máximo es 2147483647
-    @PositiveOrZero(message = "El teléfono no puede ser negativo")
+    // Solo dígitos, con código de área (el formato lo valida UsuariosService.normalizarTelefono). null = sin teléfono
+    @Size(max = 20, message = "El teléfono no puede superar los 20 caracteres")
     @Column(name="numero_contacto")
-    private int numeroContacto;
+    private String numeroContacto;
 
     @Email(message = "El email no tiene un formato válido")
     @Size(max = 50, message = "El email no puede superar los 50 caracteres")

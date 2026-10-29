@@ -178,7 +178,10 @@ document.querySelectorAll('form').forEach((form) => {
 
 const LETRAS = /^[\p{L} '.-]+$/u;
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-const MAX_INT = 2147483647; // numero_contacto es INT en la base
+// Teléfono opcional: solo dígitos con código de área (10 a 15). Es lo que necesita WhatsApp
+const errorTelefono = (telefono) => telefono && !/^\d{10,15}$/.test(telefono)
+  ? 'El teléfono tiene que tener entre 10 y 15 dígitos, con código de área y sin espacios ni guiones'
+  : '';
 const mismoTexto = (a, b) => String(a ?? '').trim().toLowerCase() === String(b ?? '').trim().toLowerCase();
 
 // Los clientes reservan siempre para sí mismos
@@ -255,11 +258,10 @@ function validarUsuario(f) {
   }
 
   const telefono = f.numeroContacto.value.trim();
-  if (telefono && !/^\d{7,10}$/.test(telefono)) e.numeroContacto = 'El teléfono tiene que tener entre 7 y 10 dígitos, sin espacios ni guiones';
-  else if (telefono && Number(telefono) > MAX_INT) e.numeroContacto = 'Ese número es demasiado largo para la base de datos';
+  if (errorTelefono(telefono)) e.numeroContacto = errorTelefono(telefono);
 
   const email = f.email.value.trim();
-  if (email && !EMAIL.test(email)) e.email = 'El email no tiene un formato válido';
+  if (email &&!EMAIL.test(email)) e.email = 'El email no tiene un formato válido';
   else if (email && state.usuarios.some((u) => u.id !== usuarioEnEdicion && mismoTexto(u.email, email))) e.email = 'Ya hay un usuario registrado con ese email';
   else if (!email) e.email = 'El email es obligatorio para poder iniciar sesión';
 
@@ -609,12 +611,57 @@ const ESTADOS_TURNO = {
   CANCELADO: { texto: 'Cancelado', clase: 'off' },
 };
 
+// Enlace de WhatsApp (wa.me, gratis: abre el chat con el mensaje escrito y la persona lo envía).
+// Con 10 dígitos se asume un número argentino y se le antepone 549 (país + celular)
+function enlaceWhatsApp(telefono, texto) {
+  const numero = String(telefono ?? '').replace(/\D/g, '');
+  if (numero.length < 10) return null;
+  const completo = numero.length === 10 ? `549${numero}` : numero;
+  return `https://wa.me/${completo}?text=${encodeURIComponent(texto)}`;
+}
+
+// Mensajes que la manicurista le manda al cliente: confirmar la reserva, recordarla o avisar la cancelación
+function mensajeWhatsApp(tipo, t) {
+  const cliente = usuarioPorId(t.idCliente);
+  const manicurista = usuarioPorId(t.idManicurista);
+  const servicio = servicioPorId(t.idServicio)?.nombre ?? 'turno';
+  const inicio = fechaDeBackend(t.diaHorario);
+  const cuando = `${inicio.toLocaleDateString('es-AR', { weekday: 'long', day: 'numeric', month: 'long' })} a las ${hhmm(inicio)} hs`;
+  const direccion = manicurista?.direccion ? ` Te espero en ${manicurista.direccion}.` : '';
+  const saludo = `Hola ${cliente?.nombre ?? ''}!`;
+  if (tipo === 'cancelacion') {
+    return `${saludo} Te aviso que se canceló tu turno de ${servicio} del ${cuando}. Si querés, coordinamos otro horario.`;
+  }
+  if (tipo === 'recordatorio') {
+    return `${saludo} Te recuerdo que tenés turno de ${servicio} el ${cuando}.${direccion} ¡Te espero!`;
+  }
+  return `${saludo} Quedó reservado tu turno de ${servicio} el ${cuando}.${direccion} ¡Gracias!`;
+}
+
+// Logo de WhatsApp (Simple Icons, 24x24). Va en el HTML tal cual y toma el color del texto (currentColor)
+const ICONO_WHATSAPP = '<svg class="icono-whatsapp" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413Z"/></svg>';
+
+// Links para avisar por WhatsApp al cliente del turno (solo manicuristas y admin, y si el cliente tiene teléfono)
+function avisosWhatsApp(t) {
+  if (!esPersonal()) return '';
+  const telefono = usuarioPorId(t.idCliente)?.numeroContacto;
+  const tipos = t.estado === 'PROXIMO'
+    ? [['reserva', 'Confirmar'], ['recordatorio', 'Recordar']]
+    : t.estado === 'CANCELADO' ? [['cancelacion', 'Avisar cancelación']] : [];
+  return tipos.map(([tipo, texto]) => {
+    const url = enlaceWhatsApp(telefono, mensajeWhatsApp(tipo, t));
+    return url ? `<a class="btn-link whatsapp" href="${esc(url)}" target="_blank" rel="noopener" title="Abrir WhatsApp con el mensaje armado">${ICONO_WHATSAPP}${texto}</a>` : '';
+  }).join('');
+}
+
 // Botones de la columna de acciones según el estado. Marcar la asistencia es solo para manicuristas y admin
 function accionesDeTurno(t) {
+  const whatsapp = avisosWhatsApp(t);
   if (t.estado === 'PROXIMO') {
-    return `<button class="btn-link editar" data-reprogramar="${t.id}">Reprogramar</button><button class="btn-link" data-cancelar="${t.id}">Cancelar</button>`;
+    return `<button class="btn-link editar" data-reprogramar="${t.id}">Reprogramar</button><button class="btn-link" data-cancelar="${t.id}">Cancelar</button>${whatsapp}`;
   }
   if (!esPersonal()) return '';
+  if (t.estado === 'CANCELADO') return whatsapp;
   if (t.estado === 'REALIZADO') {
     return `<button class="btn-link" data-asistencia="${t.id}" data-no-asistio="true">Marcar no asistió</button>`;
   }
@@ -1104,7 +1151,7 @@ $('#formUsuario').addEventListener('submit', (e) => {
     const datos = {
       nombre: f.nombre.value.trim(),
       apellido: f.apellido.value.trim(),
-      numeroContacto: f.numeroContacto.value ? Number(f.numeroContacto.value) : 0,
+      numeroContacto: f.numeroContacto.value.trim() || null,
       email: f.email.value.trim(),
       direccion: f.direccion.value.trim(),
       password: f.password.value,
@@ -1524,8 +1571,7 @@ function validarRegistro(f) {
   else if (!EMAIL.test(email)) e.email = 'El email no tiene un formato válido';
 
   const telefono = f.numeroContacto.value.trim();
-  if (telefono && !/^\d{7,10}$/.test(telefono)) e.numeroContacto = 'El teléfono tiene que tener entre 7 y 10 dígitos, sin espacios ni guiones';
-  else if (telefono && Number(telefono) > MAX_INT) e.numeroContacto = 'Ese número es demasiado largo para la base de datos';
+  if (errorTelefono(telefono)) e.numeroContacto = errorTelefono(telefono);
 
   if (f.password.value.length < 6) e.password = 'La contraseña tiene que tener al menos 6 caracteres';
   else if (f.password.value !== f.password2.value) e.password2 = 'Las contraseñas no coinciden';
@@ -1541,7 +1587,7 @@ $('#formRegistro').addEventListener('submit', (e) => {
       nombre: f.nombre.value.trim(),
       apellido: f.apellido.value.trim(),
       email: f.email.value.trim(),
-      numeroContacto: f.numeroContacto.value ? Number(f.numeroContacto.value) : 0,
+      numeroContacto: f.numeroContacto.value.trim() || null,
       direccion: f.rol.value === 'MANICURISTA' ? f.direccion.value.trim() : '',
       password: f.password.value,
     });
