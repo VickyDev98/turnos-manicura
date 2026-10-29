@@ -9,6 +9,7 @@ import com.victoria.turnos_manicura.service.AuthService;
 import com.victoria.turnos_manicura.service.OfertaService;
 import com.victoria.turnos_manicura.service.ServiciosService;
 import jakarta.validation.Valid;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -35,17 +36,17 @@ public class ServiciosController {
     }
 
     // Los clientes solo consultan: crean servicios del catálogo las manicuristas y el admin
+    @PreAuthorize("hasAnyRole('ADMIN', 'MANICURISTA')")
     @PostMapping
     public ServiciosModel crear(@Valid @RequestBody ServiciosModel servicio) {
-        authService.requerirPersonal();
         return service.guardar(servicio);
     }
 
     // Solo el admin edita o da de baja servicios del catálogo (las manicuristas manejan los suyos en /ofertas)
+    @PreAuthorize("hasRole('ADMIN')")
     @PutMapping("/{id}")
     public ServiciosModel actualizar(@PathVariable Long id,
                                      @Valid @RequestBody ServiciosModel servicio) {
-        authService.requerirAdmin();
         return service.actualizar(id, servicio);
     }
 
@@ -57,11 +58,13 @@ public class ServiciosController {
 
     // Lo de abajo lo hace cada manicurista sobre sus propios servicios
 
+    @PreAuthorize("hasRole('MANICURISTA')")
     @PostMapping("/ofertas")
     public ServicioManicuristaModel agregarOferta(@Valid @RequestBody OfertaRequest pedido) {
         return ofertaService.agregar(idPropio(), pedido);
     }
 
+    @PreAuthorize("hasRole('MANICURISTA')")
     @PutMapping("/ofertas/{id}")
     public ServicioManicuristaModel actualizarOferta(
             @PathVariable Long id,
@@ -70,6 +73,6 @@ public class ServiciosController {
     }
 
     private int idPropio() {
-        return authService.requerirManicurista().getIdUsuario().intValue();
+        return authService.requerirSesion().getIdUsuario().intValue();
     }
 }
