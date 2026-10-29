@@ -148,30 +148,7 @@ class AuthServiceTest {
         verify(tokensCerrados, never()).cerrar(any(), any());
     }
 
-    // ---------- roles ----------
-
-    @Test
-    void requerirManicurista_conUnaManicurista_pasa() {
-        autenticarComo(1L, "MANICURISTA");
-
-        assertEquals(1L, service.requerirManicurista().getIdUsuario());
-    }
-
-    @Test
-    void requerirAdmin_conUnaManicurista_lanzaForbidden() {
-        autenticarComo(1L, "MANICURISTA");
-
-        assertEquals(HttpStatus.FORBIDDEN,
-                assertThrows(ResponseStatusException.class, () -> service.requerirAdmin()).getStatusCode());
-    }
-
-    @Test
-    void requerirPersonal_dejaAfueraALosClientes() {
-        autenticarComo(1L, "CLIENTE");
-
-        assertEquals(HttpStatus.FORBIDDEN,
-                assertThrows(ResponseStatusException.class, () -> service.requerirPersonal()).getStatusCode());
-    }
+    // Los permisos por rol (@PreAuthorize) se prueban con MockMvc en los tests de integración (ver RolesIntegrationTest)
 
     // ---------- registrar ----------
 
