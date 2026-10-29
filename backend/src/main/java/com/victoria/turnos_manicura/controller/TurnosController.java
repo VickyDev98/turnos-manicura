@@ -2,6 +2,7 @@ package com.victoria.turnos_manicura.controller;
 
 
 import com.victoria.turnos_manicura.dto.AgendaBloque;
+import com.victoria.turnos_manicura.dto.AgendaDia;
 import com.victoria.turnos_manicura.dto.AsistenciaRequest;
 import com.victoria.turnos_manicura.dto.ReprogramarRequest;
 import com.victoria.turnos_manicura.model.FiltroMomento;
@@ -92,5 +93,14 @@ public class TurnosController {
         }
         long id = sesion.getIdUsuario();
         return service.agenda((int) id, fecha);
+    }
+
+    // Agenda de la propia manicurista durante 7 días: "desde" y los 6 siguientes
+    @PreAuthorize("hasRole('MANICURISTA')")
+    @GetMapping("/agenda/semana")
+    public List<AgendaDia> agendaSemana(
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate desde) {
+        long id = authService.requerirSesion().getIdUsuario();
+        return service.agendaSemana((int) id, desde);
     }
 }
