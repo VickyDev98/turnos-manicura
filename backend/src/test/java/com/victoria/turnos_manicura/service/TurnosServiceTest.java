@@ -1,6 +1,7 @@
 package com.victoria.turnos_manicura.service;
 
 import com.victoria.turnos_manicura.dto.AgendaBloque;
+import com.victoria.turnos_manicura.dto.AgendaDia;
 import com.victoria.turnos_manicura.dto.Intervalo;
 import com.victoria.turnos_manicura.exception.ValidacionException;
 import com.victoria.turnos_manicura.model.FiltroMomento;
@@ -741,6 +742,35 @@ class TurnosServiceTest {
         when(disponibilidadService.noDisponible(anyInt(), any())).thenReturn(List.of());
 
         assertTrue(service.agenda(MANICURISTA, fecha).isEmpty());
+    }
+
+    @Test
+    void agendaSemana_traeSieteDiasConsecutivosDesdeLaFecha() {
+        LocalDate desde = LocalDate.now().plusDays(1);
+        when(repository.findByIdManicuristaAndActivoTrueAndDiaHorarioBetween(eq(MANICURISTA), any(), any()))
+                .thenReturn(List.of());
+        when(disponibilidadService.noDisponible(anyInt(), any())).thenReturn(List.of());
+
+        List<AgendaDia> semana = service.agendaSemana(MANICURISTA, desde);
+
+        assertEquals(7, semana.size());
+        assertEquals(desde, semana.get(0).getFecha());
+        assertEquals(desde.plusDays(6), semana.get(6).getFecha());
+    }
+
+    @Test
+    void agendaSemana_cadaTurnoQuedaEnSuDia() {
+        LocalDate desde = LocalDate.now().plusDays(1);
+        TurnosModel turno = turnoExistente(10L, MANICURISTA, CLIENTE, desde.plusDays(3).atTime(10, 0), LocalTime.of(1, 0));
+        when(repository.findByIdManicuristaAndActivoTrueAndDiaHorarioBetween(eq(MANICURISTA), any(), any()))
+                .thenReturn(List.of(turno));
+        when(disponibilidadService.noDisponible(anyInt(), any())).thenReturn(List.of());
+
+        List<AgendaDia> semana = service.agendaSemana(MANICURISTA, desde);
+
+        for (int i = 0; i < 7; i++) {
+            assertEquals(i == 3 ? 1 : 0, semana.get(i).getBloques().size(), "día " + i);
+        }
     }
 
     // ---------- helpers ----------

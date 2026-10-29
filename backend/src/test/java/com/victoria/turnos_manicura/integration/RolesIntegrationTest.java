@@ -67,6 +67,7 @@ class RolesIntegrationTest extends IntegrationTestBase {
                 solo(MANICURISTA, HttpMethod.POST, "/servicios/ofertas", "{\"idServicio\":999999}"),
                 solo(MANICURISTA, HttpMethod.PUT, "/servicios/ofertas/999999", "{\"precio\":6000}"),
                 solo(MANICURISTA, HttpMethod.GET, "/turnos/agenda?fecha=2030-01-01", null),
+                solo(MANICURISTA, HttpMethod.GET, "/turnos/agenda/semana?desde=2030-01-01", null),
                 solo(MANICURISTA, HttpMethod.GET, "/disponibilidad/franjas", null),
                 solo(MANICURISTA, HttpMethod.PUT, "/disponibilidad/franjas", FRANJAS),
                 solo(MANICURISTA, HttpMethod.GET, "/disponibilidad/bloqueos", null),

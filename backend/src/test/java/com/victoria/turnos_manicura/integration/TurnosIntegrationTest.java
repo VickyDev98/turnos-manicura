@@ -10,6 +10,7 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.ResultActions;
 
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 
 import static org.hamcrest.Matchers.contains;
@@ -290,5 +291,32 @@ class TurnosIntegrationTest extends IntegrationTestBase {
         turnosRepository.delete(turno);
 
         cancelar("cli1@turnos.com", turno).andExpect(status().isNotFound());
+    }
+
+    // ---------- Agenda semanal ----------
+
+    @Test
+    void agendaSemanaTraeSieteDiasConLosTurnosDeLaManicurista() throws Exception {
+        LocalDate hoy = LocalDate.now();
+        crearTurno(manicurista1, cliente1, hoy.plusDays(2).atTime(10, 0), true);
+        // Fuera de la semana y de otra manicurista: no tienen que aparecer
+        crearTurno(manicurista1, cliente1, hoy.plusDays(9).atTime(10, 0), true);
+        crearTurno(manicurista2, cliente2, hoy.plusDays(2).atTime(12, 0), true);
+
+        mockMvc.perform(get("/turnos/agenda/semana?desde=" + hoy)
+                        .header(HttpHeaders.AUTHORIZATION, iniciarSesion("mani1@turnos.com")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$", hasSize(7)))
+                .andExpect(jsonPath("$[0].fecha").value(hoy.toString()))
+                .andExpect(jsonPath("$[6].fecha").value(hoy.plusDays(6).toString()))
+                .andExpect(jsonPath("$[2].bloques[?(@.tipo == 'TURNO')]", hasSize(1)))
+                .andExpect(jsonPath("$[0].bloques[?(@.tipo == 'TURNO')]", hasSize(0)));
+    }
+
+    @Test
+    void agendaSemanaSinLaFechaDa400() throws Exception {
+        mockMvc.perform(get("/turnos/agenda/semana")
+                        .header(HttpHeaders.AUTHORIZATION, iniciarSesion("mani1@turnos.com")))
+                .andExpect(status().isBadRequest());
     }
 }
