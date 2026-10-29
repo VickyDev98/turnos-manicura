@@ -95,9 +95,9 @@ class UsuariosServiceTest {
     }
 
     @Test
-    void guardar_telefonoDeMenosDeSieteDigitos_lanzaValidacion() {
+    void guardar_telefonoDeMenosDeDiezDigitos_lanzaValidacion() {
         UsuariosModel usuario = nuevo("Ana", "Gomez", "ana@mail.com", "123456");
-        usuario.setNumeroContacto(12345);
+        usuario.setNumeroContacto("12345");
 
         ValidacionException e = assertThrows(ValidacionException.class, () -> service.guardar(usuario));
 
@@ -105,11 +105,39 @@ class UsuariosServiceTest {
     }
 
     @Test
-    void guardar_sinTelefonoEsValido() {
+    void guardar_telefonoConLetrasOGuiones_lanzaValidacion() {
         UsuariosModel usuario = nuevo("Ana", "Gomez", "ana@mail.com", "123456");
-        usuario.setNumeroContacto(0);
+        usuario.setNumeroContacto("11-3456-7890");
+
+        ValidacionException e = assertThrows(ValidacionException.class, () -> service.guardar(usuario));
+
+        assertEquals("numeroContacto", e.getCampo());
+    }
+
+    @Test
+    void guardar_celularConCodigoDePaisEsValido() {
+        UsuariosModel usuario = nuevo("Ana", "Gomez", "ana@mail.com", "123456");
+        usuario.setNumeroContacto("5491134567890");
 
         assertDoesNotThrow(() -> service.guardar(usuario));
+        assertEquals("5491134567890", usuario.getNumeroContacto());
+    }
+
+    @Test
+    void guardar_telefonoMayorAUnIntEsValido() {
+        UsuariosModel usuario = nuevo("Ana", "Gomez", "ana@mail.com", "123456");
+        usuario.setNumeroContacto("3515551234");
+
+        assertDoesNotThrow(() -> service.guardar(usuario));
+    }
+
+    @Test
+    void guardar_sinTelefonoQuedaNull() {
+        UsuariosModel usuario = nuevo("Ana", "Gomez", "ana@mail.com", "123456");
+        usuario.setNumeroContacto("  ");
+
+        assertDoesNotThrow(() -> service.guardar(usuario));
+        assertNull(usuario.getNumeroContacto());
     }
 
     @Test
@@ -240,6 +268,27 @@ class UsuariosServiceTest {
     }
 
     @Test
+    void listarPara_manicuristaVeContactoDeSusClientesPeroNoDeLosDeOtras() {
+        TiposUsuarioModel manicurista = new TiposUsuarioModel();
+        manicurista.setId(2L);
+        manicurista.setDescripcion("MANICURISTA");
+        when(tiposRepository.findByDescripcionIgnoreCase("MANICURISTA")).thenReturn(Optional.of(manicurista));
+
+        UsuariosModel yo = conTipo(existente(1L, "ana@mail.com"), 2);
+        UsuariosModel miCliente = conTipo(existente(6L, "maria@mail.com"), 1);
+        UsuariosModel clienteAjeno = conTipo(existente(7L, "laura@mail.com"), 1);
+        miCliente.setNumeroContacto("1134567801");
+        when(repository.findAll()).thenReturn(List.of(yo, miCliente, clienteAjeno));
+        when(turnosRepository.findIdsClientesDeManicurista(1)).thenReturn(List.of(6));
+
+        List<UsuariosModel> vistos = service.listarPara(new AuthService.Sesion(1L, AuthService.ROL_MANICURISTA));
+
+        assertEquals("1134567801", vistos.get(1).getNumeroContacto());
+        assertNull(vistos.get(2).getEmail());
+        assertNull(vistos.get(2).getNumeroContacto());
+    }
+
+    @Test
     void listarPara_adminVeTodoSinCambios() {
         UsuariosModel ana = existente(1L, "ana@mail.com");
         when(repository.findAll()).thenReturn(List.of(ana));
@@ -258,7 +307,7 @@ class UsuariosServiceTest {
         u.setApellido(apellido);
         u.setEmail(email);
         u.setPassword(password);
-        u.setNumeroContacto(1134567890);
+        u.setNumeroContacto("1134567890");
         return u;
     }
 
@@ -284,7 +333,7 @@ class UsuariosServiceTest {
         d.setApellido("Gomez");
         d.setEmail(email);
         d.setPassword(password);
-        d.setNumeroContacto(1134567890);
+        d.setNumeroContacto("1134567890");
         return d;
     }
 }
