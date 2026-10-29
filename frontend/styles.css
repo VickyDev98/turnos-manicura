@@ -123,6 +123,10 @@ input.invalid, select.invalid { border-color: var(--error); background: #fff6f6;
 }
 .btn-link:hover { text-decoration: underline; }
 .btn-link:disabled { opacity: .5; cursor: wait; }
+a.btn-link { text-decoration: none; }
+a.btn-link:hover { text-decoration: underline; }
+a.btn-link.whatsapp { color: #1a7f4b; display: inline-flex; align-items: center; gap: 4px; vertical-align: middle; }
+.icono-whatsapp { width: 15px; height: 15px; flex: none; }
 
 table { width: 100%; border-collapse: collapse; font-size: .92rem; }
 th, td { text-align: left; padding: 10px 8px; border-bottom: 1px solid var(--border); }

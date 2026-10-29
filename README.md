@@ -119,6 +119,12 @@ Para **probarlos sin mandar mails de verdad** hay una casilla de prueba (Mailpit
 
 El recordatorio se controla en `application.properties` (`app.recordatorios.horas-antes`, `app.recordatorios.intervalo-minutos`).
 
+### 💬 Avisos por WhatsApp (manuales y gratis)
+
+En la tabla de turnos, la manicurista (y el admin) ve links para avisar al cliente: **Confirmar** y **Recordar** (con el logo de WhatsApp) en los turnos próximos, y **Avisar cancelación** en los cancelados. Cada link abre WhatsApp con el mensaje ya escrito y la persona lo envía; usa `wa.me`, así que no hay API ni costo. Solo aparecen si el cliente cargó su teléfono, y la manicurista ve el teléfono únicamente de los clientes que tuvieron turno con ella.
+
+El teléfono se guarda como texto, solo dígitos con código de área (10 a 15; con 10 se asume un número argentino y se le antepone `549`). El envío automático por la API oficial de WhatsApp tiene costo y queda como mejora.
+
 ### 🗄️ Cambios en la base de datos (Flyway)
 
 El esquema se maneja con **migraciones**: archivos SQL numerados en `backend/src/main/resources/db/migration/` (`V1__esquema_inicial.sql`, `V2__...`). Al arrancar, el backend aplica solo las que la base todavía no tiene (las anota en la tabla `flyway_schema_history`).
@@ -189,7 +195,7 @@ Las rutas protegidas esperan el header `Authorization: Bearer <token>` que devue
 - Reemplazar las sesiones en memoria por **JWT** o Spring Security completo (hoy la autorización se resuelve en los servicios y se pierde al reiniciar el backend).
 - Migraciones de base con **Flyway** en lugar de un script único.
 - Mover las credenciales a un gestor de secretos (hoy van por variables de entorno).
-- Avisos también por **WhatsApp**, y recordatorios configurables por cliente (hoy son por mail y fijos en 24 hs).
+- Envío **automático** por WhatsApp (API oficial, con costo), y recordatorios configurables por cliente (hoy son por mail y fijos en 24 hs).
 
 ---
 

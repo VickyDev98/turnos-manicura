@@ -272,7 +272,7 @@ class AuthServiceTest {
         r.setApellido("Usuaria");
         r.setEmail("nueva@mail.com");
         r.setPassword("123456");
-        r.setNumeroContacto(1134567890);
+        r.setNumeroContacto("1134567890");
         return r;
     }
 

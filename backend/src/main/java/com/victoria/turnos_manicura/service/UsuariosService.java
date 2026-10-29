@@ -13,7 +13,9 @@ import org.springframework.http.HttpStatus;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.time.LocalDateTime;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 
 @Service
 
@@ -36,7 +38,8 @@ public class UsuariosService {
     }
 
     // El admin ve todo. El resto ve los nombres de todos, pero los datos de contacto solo de las
-    // manicuristas y los propios (se devuelven copias: no se tocan las entidades guardadas)
+    // manicuristas, los propios y, para una manicurista, los de sus clientes (para poder avisarles)
+    // (se devuelven copias: no se tocan las entidades guardadas)
     public List<UsuariosModel> listarPara(AuthService.Sesion sesion) {
         List<UsuariosModel> usuarios = repository.findAll();
         if (AuthService.ROL_ADMIN.equals(sesion.getRol())) {
@@ -46,6 +49,12 @@ public class UsuariosService {
         Long idManicurista = tiposRepository.findByDescripcionIgnoreCase(AuthService.ROL_MANICURISTA)
                 .map(t -> t.getId()).orElse(null);
 
+        Set<Long> clientesDeLaSesion = new HashSet<>();
+        if (AuthService.ROL_MANICURISTA.equals(sesion.getRol())) {
+            turnosRepository.findIdsClientesDeManicurista(sesion.getIdUsuario().intValue())
+                    .forEach(id -> clientesDeLaSesion.add(id.longValue()));
+        }
+
         return usuarios.stream().map(u -> {
             UsuariosModel copia = new UsuariosModel();
             copia.setId(u.getId());
@@ -54,6 +63,7 @@ public class UsuariosService {
             copia.setApellido(u.getApellido());
             copia.setActivo(u.isActivo());
             boolean visible = u.getId().equals(sesion.getIdUsuario())
+                    || clientesDeLaSesion.contains(u.getId())
                     || (idManicurista != null && u.getTipo() == idManicurista.intValue());
             if (visible) {
                 copia.setNumeroContacto(u.getNumeroContacto());
@@ -81,9 +91,7 @@ public class UsuariosService {
         if (usuario.getPassword() == null || usuario.getPassword().length() < 6) {
             throw new ValidacionException("password", "La contraseña tiene que tener al menos 6 caracteres");
         }
-        if (usuario.getNumeroContacto() != 0 && usuario.getNumeroContacto() < 1000000) {
-            throw new ValidacionException("numeroContacto", "El teléfono tiene que tener entre 7 y 10 dígitos");
-        }
+        usuario.setNumeroContacto(normalizarTelefono(usuario.getNumeroContacto()));
         if (tieneEmail && repository.existsByEmailIgnoreCase(usuario.getEmail())) {
             throw new ValidacionException("email", "Ya hay un usuario registrado con ese email");
         }
@@ -102,9 +110,7 @@ public class UsuariosService {
         if (repository.findByEmailIgnoreCase(email).filter(otro -> !otro.getId().equals(id)).isPresent()) {
             throw new ValidacionException("email", "Ya hay un usuario registrado con ese email");
         }
-        if (datos.getNumeroContacto() != 0 && datos.getNumeroContacto() < 1000000) {
-            throw new ValidacionException("numeroContacto", "El teléfono tiene que tener entre 7 y 10 dígitos");
-        }
+        String telefono = normalizarTelefono(datos.getNumeroContacto());
         boolean cambiaPassword = datos.getPassword() != null && !datos.getPassword().isEmpty();
         if (cambiaPassword && datos.getPassword().length() < 6) {
             throw new ValidacionException("password", "La contraseña tiene que tener al menos 6 caracteres");
@@ -112,7 +118,7 @@ public class UsuariosService {
 
         usuario.setNombre(datos.getNombre().trim());
         usuario.setApellido(datos.getApellido().trim());
-        usuario.setNumeroContacto(datos.getNumeroContacto());
+        usuario.setNumeroContacto(telefono);
         usuario.setEmail(email);
         boolean tieneDireccion = datos.getDireccion() != null && !datos.getDireccion().isBlank();
         usuario.setDireccion(tieneDireccion ? datos.getDireccion().trim() : null);
@@ -144,6 +150,19 @@ public class UsuariosService {
 
         usuario.setActivo(activo);
         return repository.save(usuario);
+    }
+
+    // Vacío = sin teléfono (null). Si hay, solo dígitos con código de área (10 a 15): es lo que necesita WhatsApp
+    private String normalizarTelefono(String telefono) {
+        if (telefono == null || telefono.isBlank()) {
+            return null;
+        }
+        String limpio = telefono.trim();
+        if (!limpio.matches("\\d{10,15}")) {
+            throw new ValidacionException("numeroContacto",
+                    "El teléfono tiene que tener entre 10 y 15 dígitos, con código de área y sin espacios ni guiones");
+        }
+        return limpio;
     }
 
     private UsuariosModel buscar(Long id) {
