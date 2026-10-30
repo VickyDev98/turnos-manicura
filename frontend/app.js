@@ -20,9 +20,71 @@ apiInput.addEventListener('change', () => {
   if (state.sesion) cargarTodo();
 });
 
+// ---------- Tema (claro / oscuro) ----------
+
+// El tema inicial lo pone un script en el <head> (el guardado o el del sistema); acá solo se maneja el botón.
+// Recién al apretar el botón se guarda la elección: hasta entonces se sigue el tema del sistema
+function pintarBotonesTema() {
+  const oscuro = document.documentElement.dataset.theme === 'dark';
+  for (const btn of document.querySelectorAll('.btn-tema')) {
+    btn.innerHTML = oscuro
+      ? '<span aria-hidden="true">☀️</span> Modo claro'
+      : '<span aria-hidden="true">🌙</span> Modo oscuro';
+  }
+}
+
+document.querySelectorAll('.btn-tema').forEach((btn) => btn.addEventListener('click', () => {
+  const nuevo = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark';
+  document.documentElement.dataset.theme = nuevo;
+  try { localStorage.setItem('tema', nuevo); } catch {}
+  pintarBotonesTema();
+}));
+pintarBotonesTema();
+
+// ---------- Indicador de carga ----------
+
+// Cuenta los pedidos al backend en curso. El aviso aparece recién a los 300 ms para que no parpadee con las respuestas rápidas
+let pedidosEnCurso = 0;
+let temporizadorCarga = null;
+
+function carga(delta) {
+  const antes = pedidosEnCurso;
+  pedidosEnCurso += delta;
+  if (antes === 0 && pedidosEnCurso > 0) {
+    temporizadorCarga = setTimeout(() => { $('#cargando').hidden = false; }, 300);
+  } else if (pedidosEnCurso === 0) {
+    clearTimeout(temporizadorCarga);
+    $('#cargando').hidden = true;
+  }
+}
+
+// Botón de envío: deshabilitado y con un spinner mientras se espera la respuesta
+function enviando(btn, activo) {
+  btn.disabled = activo;
+  btn.classList.toggle('enviando', activo);
+  btn.setAttribute('aria-busy', String(activo));
+}
+
+// Con el login abierto, lo que hay detrás no se puede usar con el teclado ni con un lector de pantalla
+function bloquearFondo(bloquear) {
+  document.querySelectorAll('.topbar, nav, main').forEach((el) => { el.inert = bloquear; });
+}
+
+// Quien pidió menos movimiento no ve desplazamientos animados
+const comportamientoScroll = () => matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth';
+
 // ---------- API ----------
 
 async function api(path, options = {}) {
+  carga(1);
+  try {
+    return await pedir(path, options);
+  } finally {
+    carga(-1);
+  }
+}
+
+async function pedir(path, options) {
   const base = apiInput.value.trim().replace(/\/$/, '');
   const res = await fetch(base + path, {
     ...options,
@@ -56,11 +118,13 @@ const post = (path, data) => api(path, { method: 'POST', body: JSON.stringify(da
 
 function toast(msg, isError = false) {
   const el = $('#toast');
+  // Los errores se leen en el acto (assertive) y quedan más tiempo en pantalla
+  el.setAttribute('aria-live', isError ? 'assertive' : 'polite');
   el.textContent = msg;
   el.classList.toggle('error', isError);
   el.classList.add('show');
   clearTimeout(toast.t);
-  toast.t = setTimeout(() => el.classList.remove('show'), 3500);
+  toast.t = setTimeout(() => el.classList.remove('show'), isError ? 7000 : 4000);
 }
 
 function esc(value) {
@@ -150,6 +214,10 @@ const ALIAS_CAMPOS = { diaHorario: 'fecha' };
 function limpiarErrores(form) {
   form.querySelectorAll('.field-error').forEach((el) => el.remove());
   form.querySelectorAll('.invalid').forEach((el) => el.classList.remove('invalid'));
+  form.querySelectorAll('[aria-invalid]').forEach((el) => {
+    el.removeAttribute('aria-invalid');
+    el.removeAttribute('aria-describedby');
+  });
 }
 
 function mostrarErrores(form, errores) {
@@ -161,6 +229,10 @@ function mostrarErrores(form, errores) {
     const span = document.createElement('span');
     span.className = 'field-error';
     span.textContent = mensaje;
+    // El lector de pantalla lee el error junto con el campo
+    span.id = `error-${form.id}-${campo}`;
+    input.setAttribute('aria-invalid', 'true');
+    input.setAttribute('aria-describedby', span.id);
     input.closest('label').append(span);
     primero ??= input;
   }
@@ -172,6 +244,8 @@ document.querySelectorAll('form').forEach((form) => {
   form.addEventListener('input', (e) => {
     const label = e.target.closest('label');
     e.target.classList.remove('invalid');
+    e.target.removeAttribute?.('aria-invalid');
+    e.target.removeAttribute?.('aria-describedby');
     label?.querySelector('.field-error')?.remove();
   });
 });
@@ -288,7 +362,7 @@ async function enviarForm(form, validar, accion) {
   }
 
   const btn = form.querySelector('button[type="submit"]');
-  btn.disabled = true;
+  enviando(btn, true);
   try {
     await accion();
     form.reset();
@@ -296,7 +370,7 @@ async function enviarForm(form, validar, accion) {
     if (e.errores && Object.keys(e.errores).length) mostrarErrores(form, e.errores);
     toast(e.message === 'Failed to fetch' ? 'No se pudo conectar con el backend' : e.message, true);
   } finally {
-    btn.disabled = false;
+    enviando(btn, false);
   }
 }
 
@@ -559,7 +633,9 @@ function renderMisTurnos() {
       const clases = ['cal-dia', turnos.length ? 'reservado' : '', clave === hoyClave ? 'hoy' : '', clave < hoyClave ? 'pasado' : '']
         .filter(Boolean).join(' ');
       const detalle = turnos.map((t) => `${hhmm(t.inicio)} ${servicioPorId(t.idServicio)?.nombre ?? ''}`).join('\n');
-      celdas += `<span class="${clases}"${detalle ? ` title="${esc(detalle)}"` : ''}>${dia}</span>`;
+      // Los días con turno se leen completos ("29 de octubre: 10:00 Esculpidas"); el resto es solo el número
+      const lectura = `${dia} de ${MESES[primero.getMonth()].toLowerCase()}: ${detalle.replace(/\n/g, '; ')}`;
+      celdas += `<span class="${clases}"${detalle ? ` title="${esc(detalle)}" role="img" aria-label="${esc(lectura)}"` : ''}${clave === hoyClave ? ' aria-current="date"' : ''}>${dia}</span>`;
     }
 
     html += `
@@ -595,6 +671,7 @@ function renderMisTurnos() {
           ${manicurista?.numeroContacto ? `<dt>Contacto</dt><dd>${esc(manicurista.numeroContacto)}</dd>` : ''}
         </dl>
         <div class="bloqueo-acciones">
+          <button class="btn-link editar" data-detalle="${t.id}">Ver detalle</button>
           <button class="btn-link editar" data-reprogramar="${t.id}">Reprogramar</button>
           <button class="btn-link" data-cancelar="${t.id}">Cancelar turno</button>
         </div>
@@ -654,8 +731,13 @@ function avisosWhatsApp(t) {
   }).join('');
 }
 
-// Botones de la columna de acciones según el estado. Marcar la asistencia es solo para manicuristas y admin
+// Columna de acciones de la tabla: siempre se puede ver el detalle, y después lo que corresponde al estado
 function accionesDeTurno(t) {
+  return `<button class="btn-link editar" data-detalle="${t.id}" aria-label="Ver detalle del turno del ${esc(formatearFecha(t.diaHorario))}">Ver detalle</button>${botonesDeEstado(t)}`;
+}
+
+// Botones según el estado. Marcar la asistencia es solo para manicuristas y admin
+function botonesDeEstado(t) {
   const whatsapp = avisosWhatsApp(t);
   if (t.estado === 'PROXIMO') {
     return `<button class="btn-link editar" data-reprogramar="${t.id}">Reprogramar</button><button class="btn-link" data-cancelar="${t.id}">Cancelar</button>${whatsapp}`;
@@ -744,7 +826,7 @@ function htmlBloques(bloques, conTexto) {
     const turno = b.tipo === 'TURNO';
     const rango = `${minutosAHHMM(b.desde)}–${minutosAHHMM(b.hasta)}`;
     const titulo = turno ? `${rango} · ${b.cliente} · ${b.servicio}` : `${rango} · ${b.servicio}`;
-    const texto = conTexto && b.hasta - b.desde >= 60 ? (turno ? rango : b.servicio) : '';
+    const texto = conTexto && b.hasta - b.desde >= 90 ? (turno ? rango : b.servicio) : '';
     return `
     <div class="agenda-bloque ${turno ? '' : 'nodisp'}" style="left:${pctAgenda(b.desde)}%;width:${pctAgenda(b.hasta) - pctAgenda(b.desde)}%"
          title="${esc(titulo)}">${esc(texto)}</div>`;
@@ -847,7 +929,7 @@ function renderSemana(dias) {
     const resumen = turnos === 0 ? 'Sin turnos' : `${turnos} ${turnos === 1 ? 'turno' : 'turnos'}`;
     return `
       <button type="button" class="semana-fila ${fecha === hoy() ? 'hoy' : ''}" data-agenda-dia="${fecha}"
-              title="Ver el detalle de ${esc(textoDeDia(fecha))}">
+              title="Ver el detalle de ${esc(textoDeDia(fecha))}" aria-label="${esc(textoDeDia(fecha))}: ${resumen}. Ver el detalle">
         <span class="semana-dia">${etiquetaDeDia(fecha)}<small>${resumen}</small></span>
         <div class="agenda-barra chica">${htmlBloques(todos, false)}${htmlAhora(fecha)}</div>
       </button>`;
@@ -916,16 +998,18 @@ $('#agendaVerSemana').addEventListener('click', () => {
 async function cancelarDesdeClick(e) {
   if (e.target.dataset.reprogramar) return abrirReprogramar(e.target.dataset.reprogramar);
   const id = e.target.dataset.cancelar;
-  if (!id || !confirm('¿Cancelar este turno?')) return;
+  if (!id || !confirm('¿Cancelar este turno?')) return false;
   e.target.disabled = true;
   try {
     await api(`/turnos/${id}/cancelar`, { method: 'PUT' });
     toast('Turno cancelado');
     await cargarTurnos();
     cargarAgenda();
+    return true;
   } catch (err) {
     toast(err.message, true);
     e.target.disabled = false;
+    return false;
   }
 }
 
@@ -937,19 +1021,77 @@ async function asistenciaDesdeClick(e) {
   const id = e.target.dataset.asistencia;
   if (!id) return;
   const noAsistio = e.target.dataset.noAsistio === 'true';
-  if (noAsistio && !confirm('¿Marcar que el cliente no asistió a este turno?')) return;
+  if (noAsistio && !confirm('¿Marcar que el cliente no asistió a este turno?')) return false;
   e.target.disabled = true;
   try {
     await api(`/turnos/${id}/asistencia`, { method: 'PUT', body: JSON.stringify({ noAsistio }) });
     toast(noAsistio ? 'Turno marcado como "No asistió"' : 'Turno corregido: el cliente sí asistió');
     await cargarTurnos();
+    return true;
   } catch (err) {
     toast(err.message, true);
     e.target.disabled = false;
+    return false;
   }
 }
 
 $('#tablaTurnos').addEventListener('click', asistenciaDesdeClick);
+
+// ---------- Detalle de un turno ----------
+
+const buscarTurno = (id) => [...state.turnos, ...state.pagina.content].find((x) => String(x.id) === String(id));
+
+function htmlDetalleTurno(t) {
+  const servicio = servicioPorId(t.idServicio);
+  const manicurista = usuarioPorId(t.idManicurista);
+  const cliente = usuarioPorId(t.idCliente);
+  const inicio = fechaDeBackend(t.diaHorario);
+  const minutos = minutosDeTurno(t);
+  const fin = finDeTurno(inicio, minutos);
+  const fecha = inicio.toLocaleDateString('es-AR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+  const estado = ESTADOS_TURNO[t.estado];
+  const precio = t.precio ?? servicio?.precio;
+  return `
+    <p class="detalle-fecha">${esc(fecha)}</p>
+    <p class="detalle-hora">${hhmm(inicio)} – ${hhmm(fin)} hs${minutos ? ` (${minutos} min)` : ''}</p>
+    <dl class="detalle-datos">
+      <dt>Estado</dt><dd><span class="badge ${estado.clase}">${estado.texto}</span></dd>
+      <dt>Servicio</dt><dd>${esc(servicio?.nombre ?? '—')}${precio != null ? ` · ${dinero(precio)}` : ''}</dd>
+      <dt>Manicurista</dt><dd>${esc(nombreCompleto(manicurista))}</dd>
+      ${manicurista?.numeroContacto ? `<dt>Contacto</dt><dd>${esc(manicurista.numeroContacto)}</dd>` : ''}
+      ${esCliente() ? '' : `<dt>Cliente</dt><dd>${esc(nombreCompleto(cliente))}</dd>`}
+      ${esPersonal() && cliente?.numeroContacto ? `<dt>Teléfono del cliente</dt><dd>${esc(cliente.numeroContacto)}</dd>` : ''}
+      <dt>Dirección de la sede</dt><dd>${esc(manicurista?.direccion || 'A confirmar con la manicurista')}</dd>
+    </dl>`;
+}
+
+function abrirDetalle(id) {
+  const t = buscarTurno(id);
+  if (!t) return;
+  $('#detalleContenido').innerHTML = htmlDetalleTurno(t);
+  $('#detalleAcciones').innerHTML = botonesDeEstado(t);
+  $('#modalDetalle').showModal();
+}
+
+function abrirDetalleDesdeClick(e) {
+  if (e.target.dataset.detalle) abrirDetalle(e.target.dataset.detalle);
+}
+$('#tablaTurnos').addEventListener('click', abrirDetalleDesdeClick);
+$('#tarjetasTurnos').addEventListener('click', abrirDetalleDesdeClick);
+
+// Las acciones del detalle son las mismas de la tabla; al terminar bien, el detalle se cierra (ya está desactualizado)
+$('#detalleAcciones').addEventListener('click', async (e) => {
+  const modal = $('#modalDetalle');
+  if (e.target.dataset.reprogramar) {
+    modal.close();
+    return abrirReprogramar(e.target.dataset.reprogramar);
+  }
+  const hecho = e.target.dataset.cancelar ? await cancelarDesdeClick(e)
+    : e.target.dataset.asistencia ? await asistenciaDesdeClick(e)
+    : false;
+  if (hecho) modal.close();
+});
+$('#detalleCerrar').addEventListener('click', () => $('#modalDetalle').close());
 
 // ---------- Reprogramar un turno ----------
 
@@ -998,8 +1140,7 @@ $('#reprogramarHorarios').addEventListener('click', (e) => {
   const slot = e.target.closest('.slot');
   if (!slot) return;
   horaReprogramar = slot.dataset.hora;
-  document.querySelectorAll('#reprogramarHorarios .slot.selected').forEach((el) => el.classList.remove('selected'));
-  slot.classList.add('selected');
+  marcarSlot(slot);
   $('#reprogramarConfirmar').disabled = false;
   $('#reprogramarError').hidden = true;
 });
@@ -1013,7 +1154,7 @@ $('#formReprogramar').addEventListener('submit', async (e) => {
   if (!t || !fecha || !horaReprogramar) return;
 
   const btn = $('#reprogramarConfirmar');
-  btn.disabled = true;
+  enviando(btn, true);
   try {
     await api(`/turnos/${t.id}/reprogramar`, { method: 'PUT', body: JSON.stringify({ diaHorario: `${fecha} ${horaReprogramar}:00` }) });
     $('#modalReprogramar').close();
@@ -1024,7 +1165,10 @@ $('#formReprogramar').addEventListener('submit', async (e) => {
     const error = $('#reprogramarError');
     error.textContent = err.message === 'Failed to fetch' ? 'No se pudo conectar con el backend' : err.message;
     error.hidden = false;
-    btn.disabled = false;
+  } finally {
+    enviando(btn, false);
+    // Si salió bien el modal ya está cerrado y se pidió otro horario la próxima vez; si falló, se puede volver a intentar
+    btn.disabled = !horaReprogramar;
   }
 });
 
@@ -1037,6 +1181,8 @@ async function cargar(clave, path, render) {
 
 async function cargarTodo() {
   const status = $('#apiStatus');
+  status.className = 'status';
+  $('#apiEstado').textContent = 'Conectando…';
   const resultados = await Promise.allSettled([
     cargar('tipos', '/tiposUsuario', renderTipos),
     cargar('usuarios', '/usuarios', renderUsuarios),
@@ -1053,6 +1199,7 @@ async function cargarTodo() {
 
   const fallidos = resultados.filter((r) => r.status === 'rejected');
   status.className = 'status ' + (fallidos.length === resultados.length ? 'down' : 'ok');
+  $('#apiEstado').textContent = fallidos.length === resultados.length ? 'Sin conexión' : (fallidos.length ? 'Con errores' : 'Conectado');
   status.title = fallidos.length ? `Errores: ${fallidos.map((f) => f.reason.message).join(', ')}` : 'Conectado';
   if (fallidos.length === resultados.length) {
     toast('No se pudo conectar con el backend. ¿Está corriendo en ' + apiInput.value + '?', true);
@@ -1066,6 +1213,15 @@ async function cargarTodo() {
 // ---------- Horarios libres (clientes) ----------
 
 const PASO_HORARIOS_MIN = 30;
+
+// Deja marcado un solo horario de la lista, también para los lectores de pantalla (aria-pressed)
+function marcarSlot(slot) {
+  slot.closest('.slots').querySelectorAll('.slot').forEach((el) => {
+    const elegido = el === slot;
+    el.classList.toggle('selected', elegido);
+    el.setAttribute('aria-pressed', String(elegido));
+  });
+}
 
 // Horarios (cada 30 min) en los que entra un turno de `minutos` ese día con esa manicurista:
 // descarta lo pasado, los bloqueos / horas fuera de su horario de trabajo y los turnos que se pisan.
@@ -1097,7 +1253,7 @@ async function calcularHorariosLibres({ idManicurista, minutos, fecha, idCliente
 const htmlHorarios = (libres, minutos) => libres.length
   ? `<h3>Horarios libres (${minutos} min cada turno)</h3>
      <div class="slots-lista">${libres.map((l) => `
-       <button type="button" class="slot" data-hora="${minutosAHHMM(l.min)}">
+       <button type="button" class="slot" data-hora="${minutosAHHMM(l.min)}" aria-pressed="false">
          ${minutosAHHMM(l.min)}<small>hasta ${hhmm(l.fin)}</small>
        </button>`).join('')}</div>`
   : '<p class="empty">No hay horarios libres ese día. Probá con otra fecha.</p>';
@@ -1131,8 +1287,7 @@ $('#horariosLibres').addEventListener('click', (e) => {
   const slot = e.target.closest('.slot');
   if (!slot) return;
   $('#formTurno').hora.value = slot.dataset.hora;
-  document.querySelectorAll('.slot.selected').forEach((el) => el.classList.remove('selected'));
-  slot.classList.add('selected');
+  marcarSlot(slot);
   $('#horariosLibres .field-error')?.remove();
 });
 
@@ -1235,7 +1390,7 @@ $('#listaServicios').addEventListener('click', (e) => {
     $('#tituloServicio').textContent = `Editar servicio: ${s.nombre}`;
     $('#btnServicio').textContent = 'Guardar cambios';
     $('#btnCancelarServicio').hidden = false;
-    f.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    f.scrollIntoView({ behavior: comportamientoScroll(), block: 'center' });
   }
   if (d.bajaServicio && confirm('¿Dar de baja este servicio? Deja de poder reservarse con cualquier manicurista; los turnos ya reservados se mantienen.')) {
     cambiarActivoServicio(d.bajaServicio, false);
@@ -1317,7 +1472,7 @@ $('#tablaUsuarios').addEventListener('click', (e) => {
     $('#tituloUsuario').textContent = `Editar usuario: ${nombreCompleto(u)}`;
     $('#btnUsuario').textContent = 'Guardar cambios';
     $('#btnCancelarUsuario').hidden = false;
-    f.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    f.scrollIntoView({ behavior: comportamientoScroll(), block: 'center' });
   }
   if (d.bajaUsuario) {
     const u = state.usuarios.find((x) => String(x.id) === d.bajaUsuario);
@@ -1346,14 +1501,37 @@ for (const filtro of ['#filtroManicurista', '#filtroMomento']) {
 // ---------- Tabs ----------
 
 function mostrarTab(tab) {
-  document.querySelectorAll('.tab, .panel').forEach((el) => el.classList.remove('active'));
-  tab.classList.add('active');
+  document.querySelectorAll('.tab').forEach((el) => {
+    const activa = el === tab;
+    el.classList.toggle('active', activa);
+    el.setAttribute('aria-selected', String(activa));
+    el.tabIndex = activa ? 0 : -1; // solo la pestaña activa entra en el orden del Tab; las otras se recorren con flechas
+  });
+  document.querySelectorAll('.panel').forEach((el) => el.classList.remove('active'));
   $('#' + tab.dataset.tab).classList.add('active');
   if (tab.dataset.tab === 'agenda') cargarAgenda();
+  if (tab.dataset.tab === 'reportes') cargarReporte();
 }
 
 document.querySelectorAll('.tab').forEach((tab) => {
   tab.addEventListener('click', () => mostrarTab(tab));
+});
+
+// Flechas, Inicio y Fin recorren las pestañas visibles (patrón estándar de pestañas accesibles)
+$('.tabs').addEventListener('keydown', (e) => {
+  const visibles = [...document.querySelectorAll('.tab')].filter((t) => !t.hidden);
+  const i = visibles.indexOf(document.activeElement);
+  if (i < 0) return;
+  const destino = {
+    ArrowRight: visibles[(i + 1) % visibles.length],
+    ArrowLeft: visibles[(i - 1 + visibles.length) % visibles.length],
+    Home: visibles[0],
+    End: visibles[visibles.length - 1],
+  }[e.key];
+  if (!destino) return;
+  e.preventDefault();
+  destino.focus();
+  mostrarTab(destino);
 });
 
 // No permitir elegir fechas pasadas (el backend las rechaza igual)
@@ -1439,7 +1617,7 @@ $('#formFranjas').addEventListener('submit', async (e) => {
   if (!franjas.length && !confirm('No marcaste ningún día: se va a considerar que atendés todos los días de 06:00 a 23:00. ¿Continuar?')) return;
 
   const btn = e.target.querySelector('button[type="submit"]');
-  btn.disabled = true;
+  enviando(btn, true);
   try {
     renderFranjas(await api('/disponibilidad/franjas', { method: 'PUT', body: JSON.stringify(franjas) }));
     toast('Horario de trabajo guardado');
@@ -1447,7 +1625,7 @@ $('#formFranjas').addEventListener('submit', async (e) => {
   } catch (err) {
     toast(err.message === 'Failed to fetch' ? 'No se pudo conectar con el backend' : err.message, true);
   } finally {
-    btn.disabled = false;
+    enviando(btn, false);
   }
 });
 
@@ -1555,7 +1733,7 @@ $('#listaBloqueos').addEventListener('click', async (e) => {
     $('#tituloBloqueo').textContent = 'Editar bloqueo';
     $('#btnBloqueo').textContent = 'Guardar cambios';
     $('#btnCancelarEdicion').hidden = false;
-    f.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    f.scrollIntoView({ behavior: comportamientoScroll(), block: 'center' });
   }
 
   if (idEliminar && confirm('¿Eliminar este bloqueo? Se liberan los horarios para nuevos turnos.')) {
@@ -1575,6 +1753,126 @@ $('#listaBloqueos').addEventListener('click', async (e) => {
 });
 
 actualizarOpcionesRepeticion();
+
+// ---------- Reportes (admin) ----------
+
+let reporte = null;
+
+// Primer y último día del mes actual, como 'YYYY-MM-DD'
+function mesActual() {
+  const hoyDate = new Date();
+  return [
+    new Date(hoyDate.getFullYear(), hoyDate.getMonth(), 1),
+    new Date(hoyDate.getFullYear(), hoyDate.getMonth() + 1, 0),
+  ].map((d) => d.toLocaleDateString('en-CA'));
+}
+
+function validarReporte(f) {
+  const e = {};
+  if (!f.desde.value) e.desde = 'Elegí la fecha inicial';
+  if (!f.hasta.value) e.hasta = 'Elegí la fecha final';
+  if (!e.desde && !e.hasta && f.hasta.value < f.desde.value) e.hasta = 'La fecha final no puede ser anterior a la inicial';
+  return e;
+}
+
+// Pide los números al backend (los calcula ReportesService) y los dibuja
+async function cargarReporte() {
+  const f = $('#formReporte');
+  if (!f.desde.value || !f.hasta.value) [f.desde.value, f.hasta.value] = mesActual();
+  limpiarErrores(f);
+  const errores = validarReporte(f);
+  if (Object.keys(errores).length) return mostrarErrores(f, errores);
+
+  const btn = f.querySelector('button[type="submit"]');
+  enviando(btn, true);
+  try {
+    reporte = await get(`/reportes/turnos?desde=${f.desde.value}&hasta=${f.hasta.value}`);
+    renderReporte();
+  } catch (err) {
+    if (err.errores) mostrarErrores(f, err.errores);
+    toast(err.message === 'Failed to fetch' ? 'No se pudo conectar con el backend' : err.message, true);
+  } finally {
+    enviando(btn, false);
+  }
+}
+
+$('#formReporte').addEventListener('submit', (e) => {
+  e.preventDefault();
+  cargarReporte();
+});
+
+const etiquetaCorta = (fecha) => `${fecha.slice(8, 10)}/${fecha.slice(5, 7)}`;
+
+function renderReporte() {
+  const r = reporte;
+  $('#reporteContenido').hidden = false;
+
+  $('#reporteResumen').innerHTML = `
+    <div class="resumen-item"><strong>${r.totalAsignados}</strong><span>Turnos asignados</span></div>
+    <div class="resumen-item"><strong>${r.totalCancelados}</strong><span>Turnos cancelados</span></div>
+    <div class="resumen-item"><strong>${r.clientesConCancelaciones.length}</strong><span>Clientes con más de ${r.limiteCancelaciones} cancelaciones</span></div>`;
+
+  // Barras horizontales: cada una con el número escrito al lado
+  const maximo = Math.max(...r.asignadosPorServicio.map((s) => s.cantidad), 1);
+  $('#reporteServicios').innerHTML = r.asignadosPorServicio.length
+    ? r.asignadosPorServicio.map((s) => `
+      <li class="barra-fila">
+        <span>${esc(s.servicio)}</span>
+        <div class="barra-pista" aria-hidden="true"><div class="barra-relleno" style="width:${(s.cantidad / maximo) * 100}%"></div></div>
+        <span class="barra-valor">${s.cantidad}</span>
+      </li>`).join('')
+    : '<li class="reporte-nota">No hay turnos asignados en este período</li>';
+
+  renderCancelados();
+
+  $('#tituloClientesCancelaciones').textContent = `Clientes con más de ${r.limiteCancelaciones} cancelaciones`;
+  const tbody = $('#tablaClientesCancelaciones');
+  if (!r.clientesConCancelaciones.length) {
+    filaVacia(tbody, 3, `Ningún cliente tiene más de ${r.limiteCancelaciones} cancelaciones`);
+  } else {
+    tbody.innerHTML = r.clientesConCancelaciones.map((c) => `
+      <tr>
+        <td>${esc(c.cliente)}</td>
+        <td>${esc(c.email || '—')}</td>
+        <td><span class="badge off">${c.cancelaciones}</span></td>
+      </tr>`).join('');
+  }
+}
+
+// Columnas de los cancelados, por día o por semana. Los mismos datos van también en una tabla para quien no ve el gráfico
+function renderCancelados() {
+  if (!reporte) return;
+  const porSemana = $('input[name="agrupacion"]:checked').value === 'semana';
+  const datos = porSemana ? reporte.canceladosPorSemana : reporte.canceladosPorDia;
+  const total = datos.reduce((suma, d) => suma + d.cantidad, 0);
+  const maximo = Math.max(...datos.map((d) => d.cantidad), 1);
+  const ancho = datos.length * 44;
+  const unidad = porSemana ? 'semana' : 'día';
+
+  $('#reporteCanceladosColumna').textContent = porSemana ? 'Semana' : 'Día';
+  $('#tablaCancelados').innerHTML = datos.map((d) => `
+    <tr><td>${porSemana ? `Semana del ${etiquetaDeDia(d.fecha)}` : esc(textoDeDia(d.fecha))}</td><td>${d.cantidad}</td></tr>`).join('');
+
+  $('#reporteCancelados').innerHTML = total === 0
+    ? '<p class="reporte-nota">No hubo turnos cancelados en este período.</p>'
+    : `
+    <div class="columnas-scroll" tabindex="0" role="img"
+         aria-label="Gráfico de turnos cancelados por ${unidad}: ${total} en total. Los datos completos están en la tabla de abajo.">
+      <div class="columnas" style="min-width:${ancho}px">
+        ${datos.map((d) => `
+        <div class="columna ${d.cantidad ? '' : 'cero'}">
+          <span class="columna-valor">${d.cantidad}</span>
+          <div class="columna-barra" style="height:${Math.round((d.cantidad / maximo) * 140)}px"></div>
+        </div>`).join('')}
+      </div>
+      <div class="columnas-etiquetas" style="min-width:${ancho}px">
+        ${datos.map((d) => `<span>${etiquetaCorta(d.fecha)}</span>`).join('')}
+      </div>
+    </div>
+    ${porSemana ? '<p class="reporte-nota">Cada columna es una semana de lunes a domingo; la fecha es el lunes.</p>' : ''}`;
+}
+
+document.querySelectorAll('input[name="agrupacion"]').forEach((radio) => radio.addEventListener('change', renderCancelados));
 
 // ---------- Sesión ----------
 
@@ -1599,12 +1897,14 @@ function iniciarSesion(sesion) {
   $('#usuarioActual').hidden = false;
   $('#btnLogout').hidden = false;
   $('#loginOverlay').hidden = true;
+  bloquearFondo(false);
 
   // Sin fecha elegida la agenda muestra la semana y el día de hoy
   $('#agendaFecha').value = '';
   semanaDesde = null;
   const TAB_INICIAL = { MANICURISTA: 'agenda', CLIENTE: 'misTurnos', ADMIN: 'turnos' };
   mostrarTab($(`.tab[data-tab="${TAB_INICIAL[sesion.rol] ?? 'turnos'}"]`));
+  $('#main').focus({ preventScroll: true });
   cargarTodo();
 }
 
@@ -1617,7 +1917,9 @@ function cerrarSesion() {
   $('#usuarioActual').hidden = true;
   $('#btnLogout').hidden = true;
   $('#loginOverlay').hidden = false;
+  bloquearFondo(true);
   mostrarFormularioAcceso('login');
+  $('#reporteContenido').hidden = true;
 }
 
 $('#formLogin').addEventListener('submit', async (e) => {
@@ -1630,7 +1932,7 @@ $('#formLogin').addEventListener('submit', async (e) => {
   if (Object.keys(errores).length) return mostrarErrores(f, errores);
 
   const btn = f.querySelector('button[type="submit"]');
-  btn.disabled = true;
+  enviando(btn, true);
   try {
     const sesion = await post('/auth/login', { email: f.email.value.trim(), password: f.password.value });
     f.reset();
@@ -1639,7 +1941,7 @@ $('#formLogin').addEventListener('submit', async (e) => {
     mostrarErrores(f, err.errores ?? {});
     toast(err.message === 'Failed to fetch' ? 'No se pudo conectar con el backend' : err.message, true);
   } finally {
-    btn.disabled = false;
+    enviando(btn, false);
   }
 });
 
@@ -1648,6 +1950,8 @@ $('#formLogin').addEventListener('submit', async (e) => {
 function mostrarFormularioAcceso(cual) {
   $('#formLogin').hidden = cual !== 'login';
   $('#formRegistro').hidden = cual !== 'registro';
+  // El foco va al primer campo del formulario que se muestra
+  $(cual === 'login' ? '#formLogin' : '#formRegistro').querySelector('input:not([type="radio"])').focus();
 }
 $('#irARegistro').addEventListener('click', () => mostrarFormularioAcceso('registro'));
 $('#irALogin').addEventListener('click', () => mostrarFormularioAcceso('login'));
