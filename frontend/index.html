@@ -4,12 +4,26 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Turnos Manicura</title>
+  <script>
+    // Tema elegido (o el del sistema) antes de que se pinte la página, para que no parpadee
+    (function () {
+      var t = null;
+      try { t = localStorage.getItem("tema"); } catch (e) {}
+      if (t !== "light" && t !== "dark") t = window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+      document.documentElement.setAttribute("data-theme", t);
+    })();
+  </script>
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
-  <div id="loginOverlay" class="login-overlay" hidden>
+  <a class="skip-link" href="#main">Saltar al contenido</a>
+  <div id="cargando" class="cargando" role="status" hidden><span class="spinner" aria-hidden="true"></span> Cargando…</div>
+
+  <div id="loginOverlay" class="login-overlay" role="dialog" aria-modal="true" aria-label="Acceso al sistema" hidden>
+    <button type="button" class="btn-tema"></button>
+
     <form id="formLogin" class="card login-card" novalidate>
-      <h1>💅 Turnos Manicura</h1>
+      <h2><span aria-hidden="true">💅</span> Turnos Manicura</h2>
       <p class="login-sub">Iniciá sesión para continuar</p>
       <label>Email
         <input type="email" name="email" autocomplete="username" required>
@@ -22,25 +36,25 @@
     </form>
 
     <form id="formRegistro" class="card login-card" novalidate hidden>
-      <h1>Crear cuenta</h1>
-      <div class="rol-opciones">
+      <h2>Crear cuenta</h2>
+      <div class="rol-opciones" role="radiogroup" aria-label="Tipo de cuenta">
         <label class="radio"><input type="radio" name="rol" value="CLIENTE" checked> Soy cliente</label>
         <label class="radio"><input type="radio" name="rol" value="MANICURISTA"> Soy manicurista</label>
       </div>
       <label>Nombre
-        <input type="text" name="nombre" maxlength="50" required>
+        <input type="text" name="nombre" maxlength="50" autocomplete="given-name" required>
       </label>
       <label>Apellido
-        <input type="text" name="apellido" maxlength="50" required>
+        <input type="text" name="apellido" maxlength="50" autocomplete="family-name" required>
       </label>
       <label>Email
         <input type="email" name="email" maxlength="50" autocomplete="username" required>
       </label>
       <label>Teléfono (opcional, para avisos por WhatsApp)
-        <input type="tel" name="numeroContacto" inputmode="numeric" maxlength="15" placeholder="Con código de área, sin 0 ni 15. Ej: 1134567890">
+        <input type="tel" name="numeroContacto" inputmode="numeric" maxlength="15" autocomplete="tel-national" placeholder="Con código de área, sin 0 ni 15. Ej: 1134567890">
       </label>
       <label id="campoDireccion" hidden>Dirección donde atendés
-        <input type="text" name="direccion" maxlength="100">
+        <input type="text" name="direccion" maxlength="100" autocomplete="street-address">
       </label>
       <label>Contraseña
         <input type="password" name="password" minlength="6" autocomplete="new-password" required>
@@ -54,29 +68,33 @@
   </div>
 
   <header class="topbar">
-    <h1>💅 Turnos Manicura</h1>
+    <h1><span aria-hidden="true">💅</span> Turnos Manicura</h1>
     <div class="api-config">
-      <label for="apiUrl">API</label>
+      <label class="inline" for="apiUrl">API</label>
       <input id="apiUrl" type="text" value="http://localhost:8080">
-      <span id="apiStatus" class="status" title="Estado de la conexión">●</span>
+      <span id="apiStatus" class="status" title="Estado de la conexión"><span aria-hidden="true">●</span> <span id="apiEstado">Sin conexión</span></span>
       <span id="usuarioActual" class="usuario-actual" hidden></span>
+      <button type="button" class="btn-tema"></button>
       <button id="btnLogout" class="btn-logout" hidden>Salir</button>
     </div>
   </header>
 
-  <nav class="tabs">
-    <button class="tab" data-tab="misTurnos" data-solo="CLIENTE">Mis turnos</button>
-    <button class="tab" data-tab="agenda" data-solo="MANICURISTA">Mi agenda</button>
-    <button class="tab" data-tab="disponibilidad" data-solo="MANICURISTA">Horarios y bloqueos</button>
-    <button class="tab" data-tab="turnos">Turnos</button>
-    <button class="tab" data-tab="servicios">Servicios</button>
-    <button class="tab" data-tab="usuarios" data-solo="ADMIN">Usuarios</button>
-    <button class="tab" data-tab="tipos" data-solo="ADMIN">Tipos de usuario</button>
+  <nav aria-label="Secciones">
+    <div class="tabs" role="tablist">
+      <button class="tab" role="tab" id="tab-misTurnos" aria-controls="misTurnos" aria-selected="false" tabindex="-1" data-tab="misTurnos" data-solo="CLIENTE">Mis turnos</button>
+      <button class="tab" role="tab" id="tab-agenda" aria-controls="agenda" aria-selected="false" tabindex="-1" data-tab="agenda" data-solo="MANICURISTA">Mi agenda</button>
+      <button class="tab" role="tab" id="tab-disponibilidad" aria-controls="disponibilidad" aria-selected="false" tabindex="-1" data-tab="disponibilidad" data-solo="MANICURISTA">Horarios y bloqueos</button>
+      <button class="tab" role="tab" id="tab-turnos" aria-controls="turnos" aria-selected="false" tabindex="-1" data-tab="turnos">Turnos</button>
+      <button class="tab" role="tab" id="tab-servicios" aria-controls="servicios" aria-selected="false" tabindex="-1" data-tab="servicios">Servicios</button>
+      <button class="tab" role="tab" id="tab-usuarios" aria-controls="usuarios" aria-selected="false" tabindex="-1" data-tab="usuarios" data-solo="ADMIN">Usuarios</button>
+      <button class="tab" role="tab" id="tab-reportes" aria-controls="reportes" aria-selected="false" tabindex="-1" data-tab="reportes" data-solo="ADMIN">Reportes</button>
+      <button class="tab" role="tab" id="tab-tipos" aria-controls="tipos" aria-selected="false" tabindex="-1" data-tab="tipos" data-solo="ADMIN">Tipos de usuario</button>
+    </div>
   </nav>
 
-  <main>
+  <main id="main" tabindex="-1">
     <!-- MIS TURNOS (clientes) -->
-    <section id="misTurnos" class="panel">
+    <section id="misTurnos" class="panel" role="tabpanel" aria-labelledby="tab-misTurnos">
       <div class="card">
         <h2>Calendario</h2>
         <div class="agenda-leyenda">
@@ -92,7 +110,7 @@
     </section>
 
     <!-- AGENDA -->
-    <section id="agenda" class="panel">
+    <section id="agenda" class="panel" role="tabpanel" aria-labelledby="tab-agenda">
       <!-- Los 7 días desde hoy (o desde la semana elegida con las flechas). Se oculta al buscar un día puntual -->
       <div class="card" id="agendaSemana">
         <div class="card-head">
@@ -132,14 +150,14 @@
           <span><i class="dot ocupado"></i> Ocupado</span>
           <span><i class="dot nodisp"></i> No disponible</span>
         </div>
-        <div id="agendaBarra" class="agenda-barra" role="img" aria-label="Disponibilidad del día"></div>
-        <div id="agendaHoras" class="agenda-horas"></div>
+        <div id="agendaBarra" class="agenda-barra" role="img" aria-label="Disponibilidad del día (el detalle está en la lista de abajo)"></div>
+        <div id="agendaHoras" class="agenda-horas" aria-hidden="true"></div>
         <div id="agendaDetalle" class="agenda-detalle"></div>
       </div>
     </section>
 
     <!-- HORARIOS Y BLOQUEOS (manicuristas) -->
-    <section id="disponibilidad" class="panel">
+    <section id="disponibilidad" class="panel" role="tabpanel" aria-labelledby="tab-disponibilidad">
       <div class="card">
         <h2>Mi horario de trabajo</h2>
         <p class="ayuda">Los clientes solo pueden reservar dentro de estas franjas. Los días sin marcar no atendés.</p>
@@ -165,7 +183,7 @@
           <label>Motivo (opcional)
             <input type="text" name="motivo" maxlength="50" placeholder="Ej: Almuerzo">
           </label>
-          <div class="repeticion">
+          <div class="repeticion" role="radiogroup" aria-label="Repetición del bloqueo">
             <label class="radio"><input type="radio" name="repeticion" value="UNICA" checked> <span data-rep="UNICA"></span></label>
             <label class="radio"><input type="radio" name="repeticion" value="MES"> <span data-rep="MES"></span></label>
             <label class="radio"><input type="radio" name="repeticion" value="SIEMPRE"> <span data-rep="SIEMPRE"></span></label>
@@ -182,7 +200,7 @@
     </section>
 
     <!-- TURNOS -->
-    <section id="turnos" class="panel">
+    <section id="turnos" class="panel" role="tabpanel" aria-labelledby="tab-turnos">
       <div class="card">
         <h2>Nuevo turno</h2>
         <form id="formTurno" class="form-grid" novalidate>
@@ -220,19 +238,20 @@
           </label>
         </div>
         <table>
-          <thead><tr><th>Día y horario</th><th>Servicio</th><th>Manicurista</th><th>Cliente</th><th>Estado</th><th></th></tr></thead>
+          <caption class="sr-only">Turnos</caption>
+          <thead><tr><th scope="col">Día y horario</th><th scope="col">Servicio</th><th scope="col">Manicurista</th><th scope="col">Cliente</th><th scope="col">Estado</th><th scope="col"><span class="sr-only">Acciones</span></th></tr></thead>
           <tbody id="tablaTurnos"></tbody>
         </table>
-        <div id="paginadorTurnos" class="card-head" hidden>
-          <button type="button" class="btn" id="paginaAnterior">Anterior</button>
-          <span id="paginadorInfo"></span>
-          <button type="button" class="btn" id="paginaSiguiente">Siguiente</button>
+        <div id="paginadorTurnos" class="card-head" role="navigation" aria-label="Páginas de turnos" hidden>
+          <button type="button" class="btn-secundario" id="paginaAnterior">Anterior</button>
+          <span id="paginadorInfo" aria-live="polite"></span>
+          <button type="button" class="btn-secundario" id="paginaSiguiente">Siguiente</button>
         </div>
       </div>
     </section>
 
     <!-- SERVICIOS -->
-    <section id="servicios" class="panel">
+    <section id="servicios" class="panel" role="tabpanel" aria-labelledby="tab-servicios">
       <div class="card" data-solo="MANICURISTA">
         <h2>Mis servicios</h2>
         <p class="ayuda">Estos son los servicios que ofrecés, cada uno con tu precio. Si das de baja uno, los clientes dejan de poder reservarlo (los turnos ya reservados se mantienen).</p>
@@ -276,7 +295,7 @@
     </section>
 
     <!-- USUARIOS -->
-    <section id="usuarios" class="panel">
+    <section id="usuarios" class="panel" role="tabpanel" aria-labelledby="tab-usuarios">
       <div class="card">
         <h2 id="tituloUsuario">Nuevo usuario</h2>
         <form id="formUsuario" class="form-grid" novalidate>
@@ -308,14 +327,73 @@
       <div class="card">
         <h2>Usuarios</h2>
         <table>
-          <thead><tr><th>ID</th><th>Nombre</th><th>Tipo</th><th>Teléfono</th><th>Email</th><th>Estado</th><th></th></tr></thead>
+          <caption class="sr-only">Usuarios</caption>
+          <thead><tr><th scope="col">ID</th><th scope="col">Nombre</th><th scope="col">Tipo</th><th scope="col">Teléfono</th><th scope="col">Email</th><th scope="col">Estado</th><th scope="col"><span class="sr-only">Acciones</span></th></tr></thead>
           <tbody id="tablaUsuarios"></tbody>
         </table>
       </div>
     </section>
 
+    <!-- REPORTES (admin) -->
+    <section id="reportes" class="panel" role="tabpanel" aria-labelledby="tab-reportes">
+      <div class="card">
+        <h2>Reportes de turnos</h2>
+        <p class="ayuda">Elegí el período que querés revisar. Los turnos se cuentan por el día en que eran.</p>
+        <form id="formReporte" class="reporte-filtros" novalidate>
+          <label>Desde
+            <input type="date" name="desde" required>
+          </label>
+          <label>Hasta
+            <input type="date" name="hasta" required>
+          </label>
+          <button type="submit" class="btn">Ver reporte</button>
+        </form>
+      </div>
+
+      <div id="reporteContenido" hidden>
+        <div class="card">
+          <h2>Resumen del período</h2>
+          <div class="resumen" id="reporteResumen"></div>
+        </div>
+
+        <div class="card">
+          <h2>Turnos asignados por servicio</h2>
+          <ul id="reporteServicios" class="barras"></ul>
+        </div>
+
+        <div class="card">
+          <div class="card-head">
+            <h2>Turnos cancelados</h2>
+            <div class="segmentado" role="radiogroup" aria-label="Agrupar cancelaciones por">
+              <label><input type="radio" name="agrupacion" value="dia" checked><span>Por día</span></label>
+              <label><input type="radio" name="agrupacion" value="semana"><span>Por semana</span></label>
+            </div>
+          </div>
+          <div id="reporteCancelados"></div>
+          <details class="reporte-tabla">
+            <summary>Ver los datos como tabla</summary>
+            <table>
+              <caption class="sr-only">Turnos cancelados</caption>
+              <thead><tr><th scope="col" id="reporteCanceladosColumna">Día</th><th scope="col">Cancelados</th></tr></thead>
+              <tbody id="tablaCancelados"></tbody>
+            </table>
+          </details>
+        </div>
+
+        <div class="card">
+          <h2 id="tituloClientesCancelaciones">Clientes con más de 3 cancelaciones</h2>
+          <table>
+            <caption class="sr-only">Clientes con muchas cancelaciones</caption>
+            <thead><tr><th scope="col">Cliente</th><th scope="col">Email</th><th scope="col">Cancelaciones</th></tr></thead>
+            <tbody id="tablaClientesCancelaciones"></tbody>
+          </table>
+          <p class="reporte-nota">Cuenta todas las cancelaciones históricas del cliente, sin importar el período elegido. Incluye las que hizo el cliente y las que hizo el personal.</p>
+        </div>
+      </div>
+    </section>
+
     <!-- TIPOS DE USUARIO -->
-    <section id="tipos" class="panel">
+    <section id="tipos" class="panel" role="tabpanel" aria-labelledby="tab-tipos">
       <div class="card">
         <h2>Nuevo tipo de usuario</h2>
         <form id="formTipo" class="form-grid" novalidate>
@@ -328,22 +406,23 @@
       <div class="card">
         <h2>Tipos de usuario</h2>
         <table>
-          <thead><tr><th>ID</th><th>Descripción</th></tr></thead>
+          <caption class="sr-only">Tipos de usuario</caption>
+          <thead><tr><th scope="col">ID</th><th scope="col">Descripción</th></tr></thead>
           <tbody id="tablaTipos"></tbody>
         </table>
       </div>
     </section>
   </main>
 
-  <dialog id="modalReprogramar" class="modal">
+  <dialog id="modalReprogramar" class="modal" aria-labelledby="reprogramarTitulo">
     <form id="formReprogramar" novalidate>
-      <h2>Reprogramar turno</h2>
+      <h2 id="reprogramarTitulo">Reprogramar turno</h2>
       <p id="reprogramarResumen" class="ayuda"></p>
       <label>Nueva fecha
         <input type="date" name="fecha" required>
       </label>
       <div id="reprogramarHorarios" class="slots"></div>
-      <p id="reprogramarError" class="field-error" hidden></p>
+      <p id="reprogramarError" class="field-error" role="alert" hidden></p>
       <div class="modal-acciones">
         <button type="button" class="btn-secundario" id="reprogramarCancelar">Volver</button>
         <button type="submit" class="btn" id="reprogramarConfirmar" disabled>Confirmar nuevo horario</button>
@@ -351,7 +430,16 @@
     </form>
   </dialog>
 
-  <div id="toast" class="toast"></div>
+  <dialog id="modalDetalle" class="modal" aria-labelledby="detalleTitulo">
+    <h2 id="detalleTitulo">Detalle del turno</h2>
+    <div id="detalleContenido"></div>
+    <div id="detalleAcciones" class="detalle-acciones"></div>
+    <div class="modal-acciones">
+      <button type="button" class="btn-secundario" id="detalleCerrar">Cerrar</button>
+    </div>
+  </dialog>
+
+  <div id="toast" class="toast" aria-live="polite" aria-atomic="true"></div>
 
   <script src="app.js"></script>
 </body>

@@ -17,6 +17,20 @@ public interface TurnosRepository extends JpaRepository<TurnosModel, Long>, JpaS
     @Query("select distinct t.idCliente from TurnosModel t where t.idManicurista = :idManicurista")
     List<Integer> findIdsClientesDeManicurista(@Param("idManicurista") int idManicurista);
 
+    // Todos los turnos (activos y cancelados) cuyo día cae en [desde, hasta): base de los reportes
+    List<TurnosModel> findByDiaHorarioGreaterThanEqualAndDiaHorarioLessThan(LocalDateTime desde, LocalDateTime hasta);
+
+    // Cancelaciones por cliente: los turnos cancelados son los que quedaron con activo = false
+    interface CancelacionesPorCliente {
+        Integer getIdCliente();
+
+        Long getCantidad();
+    }
+
+    @Query("select t.idCliente as idCliente, count(t) as cantidad from TurnosModel t "
+            + "where t.activo = false group by t.idCliente having count(t) > :minimo order by count(t) desc")
+    List<CancelacionesPorCliente> clientesConMasCancelacionesQue(@Param("minimo") long minimo);
+
     // Turnos que todavía no tuvieron su recordatorio
     List<TurnosModel> findByActivoTrueAndRecordatorioEnviadoFalseAndDiaHorarioBetween(
             LocalDateTime desde,
