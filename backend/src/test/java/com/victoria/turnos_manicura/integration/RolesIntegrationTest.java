@@ -60,6 +60,7 @@ class RolesIntegrationTest extends IntegrationTestBase {
                 solo(ADMIN, HttpMethod.PUT, "/usuarios/999999/activo", "{\"activo\":true}"),
                 solo(ADMIN, HttpMethod.PUT, "/servicios/999999", SERVICIO),
                 solo(ADMIN, HttpMethod.POST, "/tiposUsuario", "{\"descripcion\":\"OTRO\"}"),
+                solo(ADMIN, HttpMethod.GET, "/reportes/turnos", null),
                 // Manicuristas y admin
                 new Endpoint(HttpMethod.POST, "/servicios", SERVICIO, Set.of(ADMIN, MANICURISTA)),
                 new Endpoint(HttpMethod.PUT, "/turnos/999999/asistencia", "{\"noAsistio\":true}", Set.of(ADMIN, MANICURISTA)),
