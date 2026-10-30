@@ -22,11 +22,9 @@ import java.util.stream.Collectors;
 public class DisponibilidadController {
 
     private final DisponibilidadService service;
-    private final AuthService authService;
 
-    public DisponibilidadController(DisponibilidadService service, AuthService authService) {
+    public DisponibilidadController(DisponibilidadService service) {
         this.service = service;
-        this.authService = authService;
     }
 
     // Lo usan los clientes para ver horarios libres: bloqueos, fuera de horario y turnos ya reservados
@@ -37,7 +35,6 @@ public class DisponibilidadController {
             @PathVariable int idManicurista,
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate fecha,
             @RequestParam(required = false) Long excluirTurno) {
-        authService.requerirSesion();
         List<Intervalo> todos = new ArrayList<>(service.noDisponible(idManicurista, fecha));
         todos.addAll(service.ocupadoPorTurnos(idManicurista, fecha, excluirTurno));
         return todos.stream()
@@ -49,43 +46,45 @@ public class DisponibilidadController {
 
     @PreAuthorize("hasRole('MANICURISTA')")
     @GetMapping("/franjas")
-    public List<FranjaTrabajoModel> franjas() {
-        return service.listarFranjas(idPropio());
+    public List<FranjaTrabajoModel> franjas(AuthService.Sesion sesion) {
+        return service.listarFranjas(idDe(sesion));
     }
 
     @PreAuthorize("hasRole('MANICURISTA')")
     @PutMapping("/franjas")
-    public List<FranjaTrabajoModel> guardarFranjas(@Valid @RequestBody List<@Valid FranjaRequest> franjas) {
-        return service.guardarFranjas(idPropio(), franjas);
+    public List<FranjaTrabajoModel> guardarFranjas(AuthService.Sesion sesion,
+                                                     @Valid @RequestBody List<@Valid FranjaRequest> franjas) {
+        return service.guardarFranjas(idDe(sesion), franjas);
     }
 
     @PreAuthorize("hasRole('MANICURISTA')")
     @GetMapping("/bloqueos")
-    public List<BloqueoModel> bloqueos() {
-        return service.listarBloqueos(idPropio());
+    public List<BloqueoModel> bloqueos(AuthService.Sesion sesion) {
+        return service.listarBloqueos(idDe(sesion));
     }
 
     @PreAuthorize("hasRole('MANICURISTA')")
     @PostMapping("/bloqueos")
-    public BloqueoModel crearBloqueo(@Valid @RequestBody BloqueoRequest pedido) {
-        return service.crearBloqueo(idPropio(), pedido);
+    public BloqueoModel crearBloqueo(AuthService.Sesion sesion, @Valid @RequestBody BloqueoRequest pedido) {
+        return service.crearBloqueo(idDe(sesion), pedido);
     }
 
     @PreAuthorize("hasRole('MANICURISTA')")
     @PutMapping("/bloqueos/{id}")
     public BloqueoModel actualizarBloqueo(
+            AuthService.Sesion sesion,
             @PathVariable Long id,
             @Valid @RequestBody BloqueoRequest pedido) {
-        return service.actualizarBloqueo(idPropio(), id, pedido);
+        return service.actualizarBloqueo(idDe(sesion), id, pedido);
     }
 
     @PreAuthorize("hasRole('MANICURISTA')")
     @DeleteMapping("/bloqueos/{id}")
-    public void eliminarBloqueo(@PathVariable Long id) {
-        service.eliminarBloqueo(idPropio(), id);
+    public void eliminarBloqueo(AuthService.Sesion sesion, @PathVariable Long id) {
+        service.eliminarBloqueo(idDe(sesion), id);
     }
 
-    private int idPropio() {
-        return authService.requerirSesion().getIdUsuario().intValue();
+    private static int idDe(AuthService.Sesion sesion) {
+        return sesion.getIdUsuario().intValue();
     }
 }

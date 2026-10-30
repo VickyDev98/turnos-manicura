@@ -8,7 +8,6 @@ import com.victoria.turnos_manicura.model.TiposUsuarioModel;
 import com.victoria.turnos_manicura.model.UsuariosModel;
 import com.victoria.turnos_manicura.repository.TiposUsuarioRepository;
 import com.victoria.turnos_manicura.repository.UsuariosRepository;
-import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -19,9 +18,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
 import org.springframework.http.HttpStatus;
-import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.oauth2.jwt.Jwt;
-import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.web.server.ResponseStatusException;
 
@@ -111,24 +108,8 @@ class AuthServiceTest {
     }
 
     // ---------- sesiones ----------
-    // El token ya lo validó Spring Security antes de llegar al service (ver SesionVigenteValidatorTest y
-    // JwtServiceTest): acá se prueba lo que el service lee del contexto y el logout
-
-    @Test
-    void requerirSesion_conUnUsuarioAutenticado_devuelveLaSesion() {
-        autenticarComo(1L, "MANICURISTA");
-
-        AuthService.Sesion sesion = service.requerirSesion();
-
-        assertEquals(1L, sesion.getIdUsuario());
-        assertEquals("MANICURISTA", sesion.getRol());
-    }
-
-    @Test
-    void requerirSesion_sinAutenticacion_lanzaUnauthorized() {
-        assertEquals(HttpStatus.UNAUTHORIZED,
-                assertThrows(ResponseStatusException.class, () -> service.requerirSesion()).getStatusCode());
-    }
+    // El token ya lo validó Spring Security antes de llegar al service (ver SesionVigenteValidatorTest,
+    // JwtServiceTest y SesionArgumentResolverTest): acá se prueba el logout
 
     @Test
     void logout_anotaElTokenComoCerrado() {
@@ -223,17 +204,7 @@ class AuthServiceTest {
 
     // ---------- helpers ----------
 
-    @AfterEach
-    void limpiarContexto() {
-        SecurityContextHolder.clearContext();
-    }
 
-    // Deja en el contexto de Spring al usuario que, en un pedido real, habría autenticado el filtro de seguridad
-    private void autenticarComo(Long idUsuario, String rol) {
-        Jwt jwt = Jwt.withTokenValue("token").header("alg", "HS256")
-                .subject(String.valueOf(idUsuario)).claim(JwtService.CLAIM_ROL, rol).build();
-        SecurityContextHolder.getContext().setAuthentication(new JwtAuthenticationToken(jwt));
-    }
 
     private LoginRequest login(String email, String password) {
         LoginRequest r = new LoginRequest();

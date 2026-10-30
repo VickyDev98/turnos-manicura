@@ -25,31 +25,29 @@ import java.util.List;
 public class TurnosController {
 
     private final TurnosService service;
-    private final AuthService authService;
 
-    public TurnosController(TurnosService service, AuthService authService) {
+    public TurnosController(TurnosService service) {
         this.service = service;
-        this.authService = authService;
     }
 
     @GetMapping
-    public List<TurnosModel> listar() {
-        return service.listarPara(authService.requerirSesion());
+    public List<TurnosModel> listar(AuthService.Sesion sesion) {
+        return service.listarPara(sesion);
     }
 
     // Turnos de a una página (page desde 0). Filtros opcionales: idManicurista y momento
     // (TODOS, PROXIMOS o HISTORIAL: los que ya pasaron y los cancelados)
     @GetMapping("/pagina")
-    public Page<TurnosModel> pagina(@RequestParam(defaultValue = "0") int page,
+    public Page<TurnosModel> pagina(AuthService.Sesion sesion,
+                                    @RequestParam(defaultValue = "0") int page,
                                     @RequestParam(defaultValue = "20") int size,
                                     @RequestParam(required = false) Integer idManicurista,
                                     @RequestParam(defaultValue = "TODOS") FiltroMomento momento) {
-        return service.paginaPara(authService.requerirSesion(), idManicurista, momento, page, size);
+        return service.paginaPara(sesion, idManicurista, momento, page, size);
     }
 
     @PostMapping
-    public TurnosModel crear(@Valid @RequestBody TurnosModel turno) {
-        AuthService.Sesion sesion = authService.requerirSesion();
+    public TurnosModel crear(AuthService.Sesion sesion, @Valid @RequestBody TurnosModel turno) {
         // Una manicurista solo carga turnos propios
         if (AuthService.ROL_MANICURISTA.equals(sesion.getRol())) {
             turno.setIdManicurista(sesion.getIdUsuario().intValue());
@@ -62,32 +60,34 @@ public class TurnosController {
     }
 
     @PutMapping("/{id}/cancelar")
-    public TurnosModel cancelar(@PathVariable Long id) {
-        return service.cancelar(id, authService.requerirSesion());
+    public TurnosModel cancelar(AuthService.Sesion sesion, @PathVariable Long id) {
+        return service.cancelar(id, sesion);
     }
 
     // Marca (o corrige) que el cliente no se presentó a un turno que ya empezó. Solo manicuristas y admin
     @PreAuthorize("hasAnyRole('ADMIN', 'MANICURISTA')")
     @PutMapping("/{id}/asistencia")
-    public TurnosModel asistencia(@PathVariable Long id,
+    public TurnosModel asistencia(AuthService.Sesion sesion,
+                                  @PathVariable Long id,
                                   @Valid @RequestBody AsistenciaRequest pedido) {
-        return service.marcarAsistencia(id, pedido.getNoAsistio(), authService.requerirSesion());
+        return service.marcarAsistencia(id, pedido.getNoAsistio(), sesion);
     }
 
     // Mueve un turno a otro horario (lo puede hacer su cliente, su manicurista o el admin)
     @PutMapping("/{id}/reprogramar")
-    public TurnosModel reprogramar(@PathVariable Long id,
+    public TurnosModel reprogramar(AuthService.Sesion sesion,
+                                   @PathVariable Long id,
                                    @Valid @RequestBody ReprogramarRequest pedido) {
-        return service.reprogramar(id, pedido.getDiaHorario(), authService.requerirSesion());
+        return service.reprogramar(id, pedido.getDiaHorario(), sesion);
     }
 
     // Agenda del día de una manicurista (solo para manicuristas). Sin idManicurista devuelve la propia
     @PreAuthorize("hasRole('MANICURISTA')")
     @GetMapping("/agenda")
     public List<AgendaBloque> agenda(
+            AuthService.Sesion sesion,
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate fecha,
             @RequestParam(required = false) Long idManicurista) {
-        AuthService.Sesion sesion = authService.requerirSesion();
         if (idManicurista != null && !idManicurista.equals(sesion.getIdUsuario())) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Solo podés ver tu propia agenda");
         }
@@ -99,8 +99,9 @@ public class TurnosController {
     @PreAuthorize("hasRole('MANICURISTA')")
     @GetMapping("/agenda/semana")
     public List<AgendaDia> agendaSemana(
+            AuthService.Sesion sesion,
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate desde) {
-        long id = authService.requerirSesion().getIdUsuario();
+        long id = sesion.getIdUsuario();
         return service.agendaSemana((int) id, desde);
     }
 }

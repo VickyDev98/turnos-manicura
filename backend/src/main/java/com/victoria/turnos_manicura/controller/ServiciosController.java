@@ -20,18 +20,15 @@ public class ServiciosController {
 
     private final ServiciosService service;
     private final OfertaService ofertaService;
-    private final AuthService authService;
 
-    public ServiciosController(ServiciosService service, OfertaService ofertaService, AuthService authService) {
+    public ServiciosController(ServiciosService service, OfertaService ofertaService) {
         this.service = service;
         this.ofertaService = ofertaService;
-        this.authService = authService;
     }
 
     // Catálogo general de servicios
     @GetMapping
     public List<ServiciosModel> listar() {
-        authService.requerirSesion();
         return service.listar();
     }
 
@@ -52,27 +49,28 @@ public class ServiciosController {
 
     // Qué servicios ofrece cada manicurista y a qué precio
     @GetMapping("/ofertas")
-    public List<ServicioManicuristaModel> ofertas() {
-        return ofertaService.listarPara(authService.requerirSesion());
+    public List<ServicioManicuristaModel> ofertas(AuthService.Sesion sesion) {
+        return ofertaService.listarPara(sesion);
     }
 
     // Lo de abajo lo hace cada manicurista sobre sus propios servicios
 
     @PreAuthorize("hasRole('MANICURISTA')")
     @PostMapping("/ofertas")
-    public ServicioManicuristaModel agregarOferta(@Valid @RequestBody OfertaRequest pedido) {
-        return ofertaService.agregar(idPropio(), pedido);
+    public ServicioManicuristaModel agregarOferta(AuthService.Sesion sesion, @Valid @RequestBody OfertaRequest pedido) {
+        return ofertaService.agregar(idDe(sesion), pedido);
     }
 
     @PreAuthorize("hasRole('MANICURISTA')")
     @PutMapping("/ofertas/{id}")
     public ServicioManicuristaModel actualizarOferta(
+            AuthService.Sesion sesion,
             @PathVariable Long id,
             @Valid @RequestBody OfertaUpdate cambios) {
-        return ofertaService.actualizar(idPropio(), id, cambios);
+        return ofertaService.actualizar(idDe(sesion), id, cambios);
     }
 
-    private int idPropio() {
-        return authService.requerirSesion().getIdUsuario().intValue();
+    private static int idDe(AuthService.Sesion sesion) {
+        return sesion.getIdUsuario().intValue();
     }
 }
