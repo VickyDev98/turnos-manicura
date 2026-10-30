@@ -16,17 +16,15 @@ import java.util.List;
 public class UsuariosController {
 
     private final UsuariosService service;
-    private final AuthService authService;
 
-    public UsuariosController(UsuariosService service, AuthService authService) {
+    public UsuariosController(UsuariosService service) {
         this.service = service;
-        this.authService = authService;
     }
 
     // El admin ve todo; el resto ve los nombres (y los datos de contacto solo de las manicuristas y los propios)
     @GetMapping
-    public List<UsuariosModel> listar() {
-        return service.listarPara(authService.requerirSesion());
+    public List<UsuariosModel> listar(AuthService.Sesion sesion) {
+        return service.listarPara(sesion);
     }
 
     // Solo el admin crea usuarios desde el sistema (el resto se registra desde la pantalla de login)
@@ -44,12 +42,12 @@ public class UsuariosController {
         return service.actualizar(id, datos);
     }
 
-    // Baja o reactivación (solo el admin). Al darlo de baja pierde el acceso enseguida: ver AuthService.requerirSesion
+    // Baja o reactivación (solo el admin). Al darlo de baja pierde el acceso enseguida: ver SesionVigenteValidator
     @PreAuthorize("hasRole('ADMIN')")
     @PutMapping("/{id}/activo")
-    public UsuariosModel cambiarActivo(@PathVariable Long id,
+    public UsuariosModel cambiarActivo(AuthService.Sesion admin,
+                                       @PathVariable Long id,
                                        @Valid @RequestBody ActivoRequest pedido) {
-        AuthService.Sesion admin = authService.requerirSesion();
         return service.cambiarActivo(id, pedido.getActivo(), admin.getIdUsuario());
     }
 }

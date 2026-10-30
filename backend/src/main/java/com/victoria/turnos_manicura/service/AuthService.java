@@ -9,12 +9,9 @@ import com.victoria.turnos_manicura.repository.TiposUsuarioRepository;
 import com.victoria.turnos_manicura.repository.UsuariosRepository;
 import lombok.Getter;
 import org.springframework.http.HttpStatus;
-import org.springframework.security.core.Authentication;
-import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.security.oauth2.jwt.JwtException;
-import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken;
 import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
 
@@ -33,7 +30,7 @@ public class AuthService {
     private static final int MAX_INTENTOS_FALLIDOS = 5;
     private static final Duration BLOQUEO_LOGIN = Duration.ofMinutes(15);
 
-    // Quién hace el pedido, leído del token JWT (ver requerirSesion)
+    // Quién hace el pedido, leído del token JWT. Los controllers la piden como parámetro (ver SesionArgumentResolver)
     @Getter
     public static class Sesion {
         private final Long idUsuario;
@@ -42,6 +39,10 @@ public class AuthService {
         public Sesion(Long idUsuario, String rol) {
             this.idUsuario = idUsuario;
             this.rol = rol;
+        }
+
+        public static Sesion desde(Jwt jwt) {
+            return new Sesion(Long.valueOf(jwt.getSubject()), jwt.getClaimAsString(JwtService.CLAIM_ROL));
         }
     }
 
@@ -130,17 +131,6 @@ public class AuthService {
         } catch (JwtException e) {
             // Token inválido o vencido: no hay nada que cerrar
         }
-    }
-
-    // Quién hace el pedido. Spring Security ya validó el token antes de llegar al controller
-    // (firma, vencimiento, usuario activo, no cerrado): acá solo se lee lo que dejó en el contexto
-    public Sesion requerirSesion() {
-        Authentication autenticacion = SecurityContextHolder.getContext().getAuthentication();
-        if (!(autenticacion instanceof JwtAuthenticationToken tokenAutenticado)) {
-            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Iniciá sesión para continuar");
-        }
-        Jwt jwt = tokenAutenticado.getToken();
-        return new Sesion(Long.valueOf(jwt.getSubject()), jwt.getClaimAsString(JwtService.CLAIM_ROL));
     }
 
     private void verificarNoBloqueado(String clave) {
