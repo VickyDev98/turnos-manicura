@@ -39,6 +39,9 @@ También podés crear tu propia cuenta de cliente o manicurista desde **"¿No te
 - **Cancelar y reprogramar** turnos. Un cliente solo puede cancelar o reprogramar con **24 hs de anticipación** respecto del horario actual del turno (`app.turnos.horas-minimas-cancelacion`, 0 = sin límite); la manicurista y el admin pueden siempre.
 - **Asistencia:** la manicurista (o el admin) puede marcar "No asistió" en un turno que ya empezó, y corregirlo si fue un error. El estado del turno pasa a `NO_ASISTIO` y queda en el historial.
 - **Avisos y recordatorios por mail:** al reservar, cancelar o reprogramar un turno se avisa a la otra parte (manicurista o cliente), y el cliente recibe un **recordatorio 24 hs antes**, una sola vez por horario. Los mails salen en segundo plano y, si fallan, no afectan la operación. Si no hay servidor de correo configurado, no se manda nada. Ver [Avisos por mail](#-avisos-por-mail).
+- **Reportes del admin** (pestaña "Reportes"): turnos asignados por servicio, turnos cancelados por día o por semana y clientes con más de 3 cancelaciones, para el período que se elija. Los turnos se ubican por el día en que eran (no se guarda cuándo se canceló).
+- **Detalle del turno:** fecha, horario, servicio y precio, manicurista, dirección de la sede y estado, con las acciones del turno (reprogramar, cancelar con confirmación).
+- **Modo claro y oscuro** (sigue el del sistema y se puede cambiar con el botón; se recuerda), indicador de carga y accesibilidad: contraste AA, foco visible, navegación por teclado, lectores de pantalla (pestañas, avisos y errores de formularios).
 - **Administración de usuarios** con baja lógica: un usuario dado de baja no puede iniciar sesión y pierde el acceso enseguida, aunque su token siga vigente.
 - **Manejo centralizado de errores:** los mensajes de validación llegan al frontend y se muestran al usuario.
 
@@ -173,6 +176,7 @@ cd backend
 | Servicios | `GET/POST/PUT /servicios`, `GET/POST/PUT /servicios/ofertas` |
 | Usuarios | `GET/POST /usuarios`, `PUT /usuarios/{id}`, `PUT /usuarios/{id}/activo` |
 | Tipos de usuario | `GET/POST /tiposUsuario` |
+| Reportes (solo admin) | `GET /reportes/turnos?desde=&hasta=` (fechas `yyyy-MM-dd`; sin fechas, el mes actual) |
 
 Las rutas protegidas esperan el header `Authorization: Bearer <token>` que devuelve el login.
 
