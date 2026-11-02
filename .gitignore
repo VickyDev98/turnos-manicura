@@ -5,3 +5,6 @@ target/
 
 # Variables de entorno con claves reales
 .env
+
+# Secretos que monta docker-compose (ver scripts/generar-secretos.ps1)
+secrets/

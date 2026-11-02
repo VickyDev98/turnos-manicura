@@ -82,9 +82,11 @@ Proyecto 2026/
 │       └── test/java/        # Tests unitarios de los servicios (JUnit 5 + Mockito)
 ├── frontend/                 # index.html, app.js, styles.css + Dockerfile (nginx)
 ├── scripts/
+│   ├── generar-secretos.ps1  # Crea los archivos de secrets/ (claves) para Docker
 │   └── historial/            # Scripts viejos (anteriores a Flyway, solo de consulta)
 ├── docker-compose.yml        # Levanta MySQL + backend + frontend
-└── .env.example              # Variables de entorno de ejemplo
+├── secrets/                  # Claves como archivos (no se sube a git; las crea scripts/generar-secretos.ps1)
+└── .env.example              # Variables de entorno de ejemplo (configuración, sin claves)
 ```
 
 **Por qué está organizado así:** cada pieza del sistema (base de datos, backend, frontend) vive en su propia carpeta, así se puede entender, cambiar o desplegar por separado. El `docker-compose.yml` está en la raíz porque coordina las tres. Los tests de Java se quedan en `backend/src/test` porque es donde Maven los espera. La configuración que cambia según el entorno (URL y clave de la base) se pasa por **variables de entorno** en lugar de escribirse en el código.
@@ -96,9 +98,10 @@ El backend sigue una arquitectura en capas: **Controller → Service → Reposit
 ## 🚀 Cómo ejecutarlo
 
 ### Opción A: con Docker (recomendada)
-Solo necesitás [Docker](https://www.docker.com/products/docker-desktop/). Desde la raíz del proyecto:
+Solo necesitás [Docker](https://www.docker.com/products/docker-desktop/). La primera vez hay que crear los **secretos** (las claves de MySQL y de los tokens, que se guardan como archivos en `secrets/`, fuera de git; ver [Secretos](#-secretos)). Desde la raíz del proyecto:
 
 ```bash
+powershell -ExecutionPolicy Bypass -File scripts\generar-secretos.ps1   # solo la primera vez
 docker compose up --build
 ```
 
@@ -108,15 +111,27 @@ La primera vez tarda unos minutos (descarga imágenes y compila el backend). Cua
 |---|---|
 | Frontend | http://localhost:3000 |
 | Backend (API) | http://localhost:8080 |
-| MySQL | `localhost:3309` (usuario `root`, clave la de tu `.env`) |
+| MySQL | `localhost:3309` (usuario `root`, clave en `secrets/mysql_root_password.txt`) |
 
-Antes de levantar, copiá `.env.example` como `.env` y poné tu clave de MySQL y una `JWT_SECRET` (la clave que firma los tokens de sesión, mínimo 32 caracteres); las dos son obligatorias. El backend crea las tablas y carga los datos de prueba solo, con **Flyway**, la primera vez que arranca (ver "Cambios en la base de datos" más abajo). Si ya tenías una base creada con el sistema anterior (`Turnos.sql`), recreala con `docker compose down -v`. Para apagar todo: `docker compose down`. Para **borrar también los datos y volver a empezar de cero**: `docker compose down -v`.
+El backend crea las tablas y carga los datos de prueba solo, con **Flyway**, la primera vez que arranca (ver "Cambios en la base de datos" más abajo). Si ya tenías una base creada con el sistema anterior (`Turnos.sql`), recreala con `docker compose down -v`. Para apagar todo: `docker compose down`. Para **borrar también los datos y volver a empezar de cero**: `docker compose down -v`.
 
-La clave de MySQL se define en `.env` (ver `.env.example`).
+### 🔐 Secretos
+
+Las claves **no van en variables de entorno** (se verían con `docker inspect` y en el entorno de cada proceso): viven como archivos en `secrets/` y Docker los monta de solo lectura en `/run/secrets/` de cada contenedor (**Docker secrets**). Spring Boot los lee con `spring.config.import=configtree:` y MySQL con `MYSQL_ROOT_PASSWORD_FILE`.
+
+| Archivo | Para qué |
+|---|---|
+| `secrets/mysql_root_password.txt` | Clave de MySQL (la usan MySQL y el backend) |
+| `secrets/jwt_secret.txt` | Clave que firma los tokens de sesión (mínimo 32 caracteres). Cambiarla cierra todas las sesiones |
+| `secrets/smtp_password.txt` | Clave del servidor de mail (puede estar vacío si no mandás avisos) |
+
+- **Crearlos:** `scripts\generar-secretos.ps1`. Toma los valores de tu `.env` si ya los tenías (imprescindible para la clave de MySQL si ya hay una base creada: MySQL solo toma la clave root al crear el volumen) y genera al azar los que falten. No pisa archivos que ya existen. Después podés borrar esas claves del `.env`.
+- **Nunca se suben a git** (`secrets/` está en `.gitignore`). Si perdés la carpeta, la clave de MySQL de una base existente no se puede recuperar: hay que restaurarla o recrear la base (`docker compose down -v`).
+- Sin Docker (`./mvnw spring-boot:run`) siguen valiendo las variables de entorno `DB_PASSWORD`, `JWT_SECRET` y `SMTP_PASSWORD`.
 
 ### 📧 Avisos por mail
 
-Los avisos están **apagados por defecto**: se activan al definir `SMTP_HOST` en el `.env` (ver `.env.example` para el resto de las variables: puerto, usuario, clave, remitente).
+Los avisos están **apagados por defecto**: se activan al definir `SMTP_HOST` en el `.env` (ver `.env.example` para el resto de las variables: puerto, usuario, remitente; la clave va en `secrets/smtp_password.txt`).
 
 Para **probarlos sin mandar mails de verdad** hay una casilla de prueba (Mailpit): poné `SMTP_HOST=mailpit` y `SMTP_PORT=1025` en `.env`, levantá con `docker compose --profile correo up --build` y mirá la bandeja en http://localhost:8025.
 
@@ -198,7 +213,7 @@ Las rutas protegidas esperan el header `Authorization: Bearer <token>` que devue
 
 - Reemplazar las sesiones en memoria por **JWT** o Spring Security completo (hoy la autorización se resuelve en los servicios y se pierde al reiniciar el backend).
 - Migraciones de base con **Flyway** en lugar de un script único.
-- Mover las credenciales a un gestor de secretos (hoy van por variables de entorno).
+- Pasar de Docker secrets (archivos locales) a un gestor de secretos externo (Vault, AWS o Azure Key Vault) si se despliega en la nube.
 - Envío **automático** por WhatsApp (API oficial, con costo), y recordatorios configurables por cliente (hoy son por mail y fijos en 24 hs).
 
 ---
