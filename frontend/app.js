@@ -100,6 +100,7 @@ async function pedir(path, options) {
   }
   if (!res.ok) {
     const error = new Error(`Error ${res.status}`);
+    error.status = res.status;
     try {
       const body = await res.json();
       if (body.message) error.message = body.message;
@@ -213,6 +214,7 @@ const ALIAS_CAMPOS = { diaHorario: 'fecha' };
 
 function limpiarErrores(form) {
   form.querySelectorAll('.field-error').forEach((el) => el.remove());
+  form.querySelectorAll('.form-error').forEach((el) => { el.hidden = true; el.textContent = ''; });
   form.querySelectorAll('.invalid').forEach((el) => el.classList.remove('invalid'));
   form.querySelectorAll('[aria-invalid]').forEach((el) => {
     el.removeAttribute('aria-invalid');
@@ -247,6 +249,8 @@ document.querySelectorAll('form').forEach((form) => {
     e.target.removeAttribute?.('aria-invalid');
     e.target.removeAttribute?.('aria-describedby');
     label?.querySelector('.field-error')?.remove();
+    // Al corregir el email o la clave también se borra el aviso general del login
+    form.querySelectorAll('.form-error').forEach((el) => { el.hidden = true; });
   });
 });
 
@@ -1939,7 +1943,20 @@ $('#formLogin').addEventListener('submit', async (e) => {
     iniciarSesion(sesion);
   } catch (err) {
     mostrarErrores(f, err.errores ?? {});
-    toast(err.message === 'Failed to fetch' ? 'No se pudo conectar con el backend' : err.message, true);
+    // El mensaje queda fijo dentro del formulario (el toast se va solo y puede pasar inadvertido)
+    const caja = $('#errorLogin');
+    caja.textContent = err.message === 'Failed to fetch' ? 'No se pudo conectar con el backend' : err.message;
+    caja.hidden = false;
+    // Con la clave o el email mal no se dice cuál de los dos, a propósito (evita averiguar qué emails existen)
+    if (err.status === 401) {
+      for (const campo of [f.email, f.password]) {
+        campo.classList.add('invalid');
+        campo.setAttribute('aria-invalid', 'true');
+        campo.setAttribute('aria-describedby', 'errorLogin');
+      }
+      f.password.value = '';
+      f.password.focus();
+    }
   } finally {
     enviando(btn, false);
   }
