@@ -251,6 +251,16 @@ input::placeholder { color: var(--muted); opacity: .85; }
 input.invalid, select.invalid { border-color: var(--error-text); border-width: 2px; background: var(--error-bg); }
 .field-error { color: var(--error-text); font-size: .85rem; font-weight: 600; }
 .field-error::before { content: "⚠ "; }
+.form-error {
+  margin: 0;
+  padding: 10px 12px;
+  border: 1px solid var(--error-text);
+  border-radius: 8px;
+  background: var(--error-bg);
+  color: var(--error-text);
+  font-weight: 600;
+}
+.form-error::before { content: "⚠ "; }
 
 .btn {
   min-height: 44px;
