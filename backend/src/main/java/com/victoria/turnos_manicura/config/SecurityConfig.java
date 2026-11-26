@@ -36,7 +36,11 @@ import java.util.Set;
 @EnableMethodSecurity
 public class SecurityConfig {
 
-    private static final Set<String> RUTAS_PUBLICAS = Set.of("/auth/login", "/auth/registro", "/auth/renovar", "/auth/logout");
+    // /error: cuando un pedido falla, Tomcat lo redespacha ahí para armar la respuesta, y Spring Security también
+    // filtra ese redespacho. Si no fuera pública, un error en una ruta pública (sin usuario) se convertiría en el
+    // 401 genérico y se perdería el código y el mensaje real (ej: un 405 o el "Email o contraseña incorrectos")
+    private static final Set<String> RUTAS_PUBLICAS =
+            Set.of("/auth/login", "/auth/registro", "/auth/renovar", "/auth/logout", "/error");
 
     @Bean
     public PasswordEncoder passwordEncoder() {

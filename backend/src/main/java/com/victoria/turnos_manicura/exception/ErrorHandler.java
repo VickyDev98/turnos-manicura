@@ -9,6 +9,7 @@ import org.springframework.transaction.CannotCreateTransactionException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.time.LocalDateTime;
 import java.util.LinkedHashMap;
@@ -35,6 +36,15 @@ public class ErrorHandler {
     @ExceptionHandler(ValidacionException.class)
     public ResponseEntity<Map<String, Object>> reglaDeNegocio(ValidacionException ex) {
         return respuesta(HttpStatus.BAD_REQUEST, ex.getMessage(), Map.of(ex.getCampo(), ex.getMessage()));
+    }
+
+    // Errores con código propio que lanzan los services (ej: 401 "Email o contraseña incorrectos", 429 por intentos).
+    // Si no se manejan acá, Spring los manda a /error y el mensaje se pierde en el camino (ver SecurityConfig)
+    @ExceptionHandler(ResponseStatusException.class)
+    public ResponseEntity<Map<String, Object>> conCodigo(ResponseStatusException ex) {
+        HttpStatus status = HttpStatus.valueOf(ex.getStatusCode().value());
+        String mensaje = ex.getReason() != null ? ex.getReason() : status.getReasonPhrase();
+        return respuesta(status, mensaje, Map.of());
     }
 
     // JSON mal formado o tipos incorrectos (ej: una fecha inválida)
