@@ -37,7 +37,7 @@ public class JwtService {
     private final Duration vigencia;
 
     public JwtService(@Value("${app.jwt.secret}") String secreto,
-                      @Value("${app.jwt.minutos-vigencia:480}") long minutosVigencia) {
+                      @Value("${app.jwt.minutos-vigencia:15}") long minutosVigencia) {
         byte[] bytes = secreto.getBytes(StandardCharsets.UTF_8);
         if (bytes.length < BYTES_MINIMOS_CLAVE) {
             throw new IllegalStateException("JWT_SECRET debe tener al menos " + BYTES_MINIMOS_CLAVE + " caracteres");

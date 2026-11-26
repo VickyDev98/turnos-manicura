@@ -59,11 +59,13 @@ public class AuthService {
     private final UsuariosService usuariosService;
     private final JwtService jwtService;
     private final TokensCerradosService tokensCerrados;
+    private final TokensRenovacionService tokensRenovacion;
 
     public AuthService(UsuariosRepository usuariosRepository, TiposUsuarioRepository tiposRepository,
                        PasswordEncoder passwordEncoder, UsuariosService usuariosService, JwtService jwtService,
-                       TokensCerradosService tokensCerrados) {
+                       TokensCerradosService tokensCerrados, TokensRenovacionService tokensRenovacion) {
         this.tokensCerrados = tokensCerrados;
+        this.tokensRenovacion = tokensRenovacion;
         this.jwtService = jwtService;
         this.usuariosService = usuariosService;
         this.usuariosRepository = usuariosRepository;
@@ -85,14 +87,29 @@ public class AuthService {
             throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Tu cuenta está dada de baja");
         }
         intentosLogin.remove(clave);
+        return sesionPara(usuario);
+    }
 
+    // Cambia un refresh token vigente por un par nuevo (access + refresh); el viejo deja de servir (rotación)
+    public LoginResponse renovar(String refreshToken) {
+        Long idUsuario = tokensRenovacion.usar(refreshToken);
+        UsuariosModel usuario = usuariosRepository.findById(idUsuario)
+                .filter(UsuariosModel::isActivo)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNAUTHORIZED,
+                        TokensRenovacionService.SESION_VENCIDA));
+        return sesionPara(usuario);
+    }
+
+    // El rol se lee de nuevo cada vez: si un admin lo cambió, el token renovado ya trae el nuevo
+    private LoginResponse sesionPara(UsuariosModel usuario) {
         String rol = tiposRepository.findById((long) usuario.getTipo())
                 .map(t -> t.getDescripcion().toUpperCase())
                 .orElse("");
 
         String token = jwtService.emitir(usuario.getId(), rol);
+        String refreshToken = tokensRenovacion.emitir(usuario.getId());
 
-        return new LoginResponse(token, usuario.getId(), usuario.getNombre(), usuario.getApellido(),
+        return new LoginResponse(token, refreshToken, usuario.getId(), usuario.getNombre(), usuario.getApellido(),
                 usuario.getEmail(), rol);
     }
 
@@ -123,8 +140,12 @@ public class AuthService {
         return login(login);
     }
 
-    // /auth/logout es una ruta pública (Spring Security no autentica el pedido), así que el token se lee acá
-    public void logout(String authorization) {
+    // /auth/logout es una ruta pública (Spring Security no autentica el pedido), así que el token se lee acá.
+    // Se cierran los dos: el access token (lista en memoria hasta que venza) y el refresh token (se borra de la base)
+    public void logout(String authorization, String refreshToken) {
+        if (refreshToken != null && !refreshToken.isBlank()) {
+            tokensRenovacion.revocar(refreshToken);
+        }
         try {
             Jwt jwt = jwtService.leer(token(authorization));
             tokensCerrados.cerrar(jwt.getId(), jwt.getExpiresAt());

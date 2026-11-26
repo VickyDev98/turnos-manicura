@@ -27,7 +27,7 @@ También podés crear tu propia cuenta de cliente o manicurista desde **"¿No te
 
 ## ✨ Funcionalidades
 
-- **Login y registro** con tres roles (cliente, manicurista, admin). Contraseñas guardadas con **BCrypt** y sesión por token `Bearer`.
+- **Login y registro** con tres roles (cliente, manicurista, admin). Contraseñas guardadas con **BCrypt** y sesión por token `Bearer`: un JWT de 15 minutos que la app renueva sola con un **refresh token** (con rotación, guardado como hash en la base).
 - **Reserva de turnos con validaciones de negocio:**
   - no se pueden superponer turnos de la misma manicurista ni del mismo cliente (se calcula con la duración de cada servicio);
   - no se puede reservar en el pasado ni a más de 6 meses;
@@ -122,7 +122,7 @@ Las claves **no van en variables de entorno** (se verían con `docker inspect` y
 | Archivo | Para qué |
 |---|---|
 | `secrets/mysql_root_password.txt` | Clave de MySQL (la usan MySQL y el backend) |
-| `secrets/jwt_secret.txt` | Clave que firma los tokens de sesión (mínimo 32 caracteres). Cambiarla cierra todas las sesiones |
+| `secrets/jwt_secret.txt` | Clave que firma los tokens de sesión (mínimo 32 caracteres). Cambiarla invalida los tokens de 15 minutos ya emitidos (la app los renueva sola con el refresh token) |
 | `secrets/smtp_password.txt` | Clave del servidor de mail (puede estar vacío si no mandás avisos) |
 
 - **Crearlos:** `scripts\generar-secretos.ps1`. Toma los valores de tu `.env` si ya los tenías (imprescindible para la clave de MySQL si ya hay una base creada: MySQL solo toma la clave root al crear el volumen) y genera al azar los que falten. No pisa archivos que ya existen. Después podés borrar esas claves del `.env`.
@@ -185,7 +185,7 @@ cd backend
 
 | Recurso | Endpoints |
 |---|---|
-| Auth | `POST /auth/login`, `POST /auth/registro`, `POST /auth/logout` |
+| Auth | `POST /auth/login`, `POST /auth/registro`, `POST /auth/renovar`, `POST /auth/logout` |
 | Turnos | `GET/POST /turnos`, `GET /turnos/pagina?page=0&size=20&idManicurista=&momento=` (paginado; `momento` = `TODOS`, `PROXIMOS` o `HISTORIAL`), `PUT /turnos/{id}/cancelar`, `PUT /turnos/{id}/reprogramar`, `PUT /turnos/{id}/asistencia` (la manicurista del turno o el admin marcan `{"noAsistio": true}` o lo corrigen con `false`), `GET /turnos/agenda` |
 | Disponibilidad | `GET /disponibilidad/manicurista/{id}`, `GET/PUT /disponibilidad/franjas`, `GET/POST/PUT/DELETE /disponibilidad/bloqueos` |
 | Servicios | `GET/POST/PUT /servicios`, `GET/POST/PUT /servicios/ofertas` |
@@ -193,7 +193,7 @@ cd backend
 | Tipos de usuario | `GET/POST /tiposUsuario` |
 | Reportes (solo admin) | `GET /reportes/turnos?desde=&hasta=` (fechas `yyyy-MM-dd`; sin fechas, el mes actual) |
 
-Las rutas protegidas esperan el header `Authorization: Bearer <token>` que devuelve el login.
+Las rutas protegidas esperan el header `Authorization: Bearer <token>` que devuelve el login. Ese token dura 15 minutos. El login también devuelve un `refreshToken` (dura 8 horas): cuando el token vence (401), `POST /auth/renovar` con `{"refreshToken": "..."}` entrega un par nuevo y el refresh token usado deja de servir (rotación). Presentar uno ya usado cierra todas las sesiones del usuario, porque es señal de que lo copiaron. `POST /auth/logout` con el mismo cuerpo lo revoca. El frontend hace todo esto solo.
 
 ---
 
