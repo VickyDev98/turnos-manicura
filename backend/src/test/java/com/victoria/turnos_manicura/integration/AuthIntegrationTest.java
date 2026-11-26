@@ -45,7 +45,11 @@ class AuthIntegrationTest extends IntegrationTestBase {
     void loginConClaveIncorrectaDa401() throws Exception {
         crearUsuario("CLIENTE", "clave.mala@test.com");
 
-        login("clave.mala@test.com", "otra-clave").andExpect(status().isUnauthorized());
+        // El mensaje propio llega tal cual (no el genérico "Iniciá sesión para continuar" de Spring Security)
+        login("clave.mala@test.com", "otra-clave")
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.message").value("Email o contraseña incorrectos"))
+                .andExpect(jsonPath("$.errores").isMap());
     }
 
     @Test
@@ -54,7 +58,9 @@ class AuthIntegrationTest extends IntegrationTestBase {
         usuario.setActivo(false);
         usuariosRepository.save(usuario);
 
-        login("de.baja@test.com", CLAVE).andExpect(status().isUnauthorized());
+        login("de.baja@test.com", CLAVE)
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.message").value("Tu cuenta está dada de baja"));
     }
 
     @Test
@@ -134,7 +140,9 @@ class AuthIntegrationTest extends IntegrationTestBase {
             login("bloqueo@test.com", "mala").andExpect(status().isUnauthorized());
         }
 
-        login("bloqueo@test.com", CLAVE).andExpect(status().isTooManyRequests());
+        login("bloqueo@test.com", CLAVE)
+                .andExpect(status().isTooManyRequests())
+                .andExpect(jsonPath("$.message").value(org.hamcrest.Matchers.startsWith("Demasiados intentos fallidos")));
     }
 
     @Test
@@ -220,9 +228,10 @@ class AuthIntegrationTest extends IntegrationTestBase {
         String nuevo = objectMapper.readTree(renovar(viejo).andReturn().getResponse().getContentAsString())
                 .get("refreshToken").asText();
 
-        // Alguien presenta la copia vieja: se rechaza... (el mensaje no se verifica: con MockMvc los
-        // ResponseStatusException salen con el cuerpo vacío; en la app real sí llega)
-        renovar(viejo).andExpect(status().isUnauthorized());
+        // Alguien presenta la copia vieja: se rechaza...
+        renovar(viejo)
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.message").value("Tu sesión venció, volvé a iniciar sesión"));
         // ...y también deja de servir el que tenía el dueño
         renovar(nuevo).andExpect(status().isUnauthorized());
     }

@@ -16,6 +16,25 @@ class ErrorHandlerTest {
     private final ErrorHandler errorHandler = new ErrorHandler();
 
     @Test
+    void conCodigo_respetaElCodigoYElMensajeDelService() {
+        ResponseEntity<Map<String, Object>> respuesta = errorHandler.conCodigo(
+                new org.springframework.web.server.ResponseStatusException(HttpStatus.UNAUTHORIZED, "Email o contraseña incorrectos"));
+
+        assertEquals(HttpStatus.UNAUTHORIZED, respuesta.getStatusCode());
+        assertEquals("Email o contraseña incorrectos", respuesta.getBody().get("message"));
+        assertEquals(Map.of(), respuesta.getBody().get("errores"));
+    }
+
+    @Test
+    void conCodigo_sinMensaje_usaElNombreDelCodigo() {
+        ResponseEntity<Map<String, Object>> respuesta = errorHandler.conCodigo(
+                new org.springframework.web.server.ResponseStatusException(HttpStatus.NOT_FOUND));
+
+        assertEquals(404, respuesta.getBody().get("status"));
+        assertEquals("Not Found", respuesta.getBody().get("message"));
+    }
+
+    @Test
     void baseNoDisponible_conErrorDeAccesoADatos_devuelve503ConMensajeClaro() {
         ResponseEntity<Map<String, Object>> respuesta = errorHandler.baseNoDisponible(
                 new DataAccessResourceFailureException("Communications link failure"));
