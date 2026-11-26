@@ -3,6 +3,7 @@ package com.victoria.turnos_manicura.controller;
 import com.victoria.turnos_manicura.dto.LoginRequest;
 import com.victoria.turnos_manicura.dto.LoginResponse;
 import com.victoria.turnos_manicura.dto.RegistroRequest;
+import com.victoria.turnos_manicura.dto.RenovarRequest;
 import com.victoria.turnos_manicura.service.AuthService;
 import jakarta.validation.Valid;
 import org.springframework.web.bind.annotation.*;
@@ -28,8 +29,16 @@ public class AuthController {
         return service.registrar(request);
     }
 
+    // Pública: se llama justamente cuando el access token ya venció. La credencial es el refresh token del cuerpo
+    @PostMapping("/renovar")
+    public LoginResponse renovar(@Valid @RequestBody RenovarRequest request) {
+        return service.renovar(request.getRefreshToken());
+    }
+
+    // El cuerpo es opcional: con el refresh token, también se revoca (si no, solo se cierra el access token)
     @PostMapping("/logout")
-    public void logout(@RequestHeader(value = "Authorization", required = false) String authorization) {
-        service.logout(authorization);
+    public void logout(@RequestHeader(value = "Authorization", required = false) String authorization,
+                       @RequestBody(required = false) RenovarRequest request) {
+        service.logout(authorization, request == null ? null : request.getRefreshToken());
     }
 }

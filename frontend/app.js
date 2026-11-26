@@ -1,4 +1,4 @@
-// sesion: { token, id, nombre, apellido, email, rol } — rol es CLIENTE o MANICURISTA
+// sesion: { token, refreshToken, id, nombre, apellido, email, rol } — rol es CLIENTE o MANICURISTA
 // turnos = todos los turnos del usuario (solo cliente y manicurista: alimentan "mis turnos" y la detección de superposiciones);
 // pagina = la página de la tabla de turnos tal como la devuelve el backend (el admin solo trabaja con esta)
 const TURNOS_POR_PAGINA = 20;
@@ -84,17 +84,53 @@ async function api(path, options = {}) {
   }
 }
 
+const urlBase = () => apiInput.value.trim().replace(/\/$/, '');
+
+const enviar = (path, options) => fetch(urlBase() + path, {
+  ...options,
+  headers: {
+    'Content-Type': 'application/json',
+    ...(state.sesion ? { Authorization: `Bearer ${state.sesion.token}` } : {}),
+  },
+});
+
+// Pide un access token nuevo con el refresh token. Si varios pedidos reciben 401 a la vez, comparten esta
+// misma renovación: si cada uno renovara por su cuenta, el segundo usaría un refresh token ya gastado y el
+// backend lo tomaría como robado (cierra todas las sesiones). Devuelve true si se pudo renovar.
+let renovacionEnCurso = null;
+function renovarSesion() {
+  if (!renovacionEnCurso) {
+    const refreshToken = state.sesion?.refreshToken;
+    renovacionEnCurso = (async () => {
+      if (!refreshToken) return false;
+      try {
+        const res = await fetch(urlBase() + '/auth/renovar', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ refreshToken }),
+        });
+        if (!res.ok || !state.sesion) return false;
+        const nueva = await res.json();
+        state.sesion = { ...state.sesion, token: nueva.token, refreshToken: nueva.refreshToken };
+        guardarSesion();
+        return true;
+      } catch {
+        return false;
+      }
+    })().finally(() => { renovacionEnCurso = null; });
+  }
+  return renovacionEnCurso;
+}
+
 async function pedir(path, options) {
-  const base = apiInput.value.trim().replace(/\/$/, '');
-  const res = await fetch(base + path, {
-    ...options,
-    headers: {
-      'Content-Type': 'application/json',
-      ...(state.sesion ? { Authorization: `Bearer ${state.sesion.token}` } : {}),
-    },
-  });
-  if (res.status === 401 && state.sesion) {
-    // El backend se reinició o la sesión venció
+  let res = await enviar(path, options);
+  // Access token vencido: se renueva sin que se note y se repite el pedido una sola vez.
+  // Las rutas /auth/ no se reintentan (un 401 del login es clave incorrecta, no sesión vencida)
+  if (res.status === 401 && state.sesion && !path.startsWith('/auth/')) {
+    if (await renovarSesion()) res = await enviar(path, options);
+  }
+  if (res.status === 401 && state.sesion && !path.startsWith('/auth/')) {
+    // No se pudo renovar: venció también el refresh token, se cerró la sesión o se dio de baja al usuario
     cerrarSesion();
     toast('Tu sesión venció, volvé a iniciar sesión', true);
   }
@@ -2019,7 +2055,7 @@ $('#formRegistro').addEventListener('submit', (e) => {
 });
 
 $('#btnLogout').addEventListener('click', async () => {
-  try { await post('/auth/logout', {}); } catch {}
+  try { await post('/auth/logout', { refreshToken: state.sesion?.refreshToken }); } catch {}
   cerrarSesion();
 });
 

@@ -183,6 +183,81 @@ class AuthIntegrationTest extends IntegrationTestBase {
                 .andExpect(status().isOk());
     }
 
+    // ---------- refresh token ----------
+
+    private com.fasterxml.jackson.databind.JsonNode loginComo(String email) throws Exception {
+        String cuerpo = login(email, CLAVE).andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+        return objectMapper.readTree(cuerpo);
+    }
+
+    private org.springframework.test.web.servlet.ResultActions renovar(String refreshToken) throws Exception {
+        return mockMvc.perform(post("/auth/renovar")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(json(Map.of("refreshToken", refreshToken))));
+    }
+
+    @Test
+    void renovarEntregaUnParNuevoQueSirveParaLasRutasProtegidas() throws Exception {
+        crearUsuario("CLIENTE", "renovar.ok@test.com");
+        String refresh = loginComo("renovar.ok@test.com").get("refreshToken").asText();
+
+        String cuerpo = renovar(refresh)
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.token").isNotEmpty())
+                .andExpect(jsonPath("$.rol").value("CLIENTE"))
+                .andReturn().getResponse().getContentAsString();
+        var nueva = objectMapper.readTree(cuerpo);
+
+        assertTrue(!refresh.equals(nueva.get("refreshToken").asText()), "La rotación entrega un refresh token distinto");
+        mockMvc.perform(get("/usuarios").header(HttpHeaders.AUTHORIZATION, "Bearer " + nueva.get("token").asText()))
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    void reusarUnRefreshYaUsadoCierraTodasLasSesionesDelUsuario() throws Exception {
+        crearUsuario("CLIENTE", "reuso@test.com");
+        String viejo = loginComo("reuso@test.com").get("refreshToken").asText();
+        String nuevo = objectMapper.readTree(renovar(viejo).andReturn().getResponse().getContentAsString())
+                .get("refreshToken").asText();
+
+        // Alguien presenta la copia vieja: se rechaza... (el mensaje no se verifica: con MockMvc los
+        // ResponseStatusException salen con el cuerpo vacío; en la app real sí llega)
+        renovar(viejo).andExpect(status().isUnauthorized());
+        // ...y también deja de servir el que tenía el dueño
+        renovar(nuevo).andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void renovarConRefreshInventadoOVacioDaError() throws Exception {
+        renovar("inventado").andExpect(status().isUnauthorized());
+        renovar("").andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void logoutRevocaElRefreshToken() throws Exception {
+        crearUsuario("CLIENTE", "logout.refresh@test.com");
+        var sesion = loginComo("logout.refresh@test.com");
+        String refresh = sesion.get("refreshToken").asText();
+
+        mockMvc.perform(post("/auth/logout")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + sesion.get("token").asText())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(json(Map.of("refreshToken", refresh))))
+                .andExpect(status().isOk());
+
+        renovar(refresh).andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void usuarioDadoDeBajaNoPuedeRenovar() throws Exception {
+        UsuariosModel cliente = crearUsuario("CLIENTE", "baja.refresh@test.com");
+        String refresh = loginComo("baja.refresh@test.com").get("refreshToken").asText();
+        cliente.setActivo(false);
+        usuariosRepository.save(cliente);
+
+        renovar(refresh).andExpect(status().isUnauthorized());
+    }
+
     @Test
     void usuarioDadoDeBajaPierdeElAccesoAunqueSuTokenSigaVigente() throws Exception {
         UsuariosModel cliente = crearUsuario("CLIENTE", "cliente.vigente@test.com");

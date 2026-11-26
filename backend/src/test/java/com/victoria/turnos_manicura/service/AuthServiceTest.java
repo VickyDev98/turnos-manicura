@@ -39,6 +39,7 @@ class AuthServiceTest {
     @Mock PasswordEncoder passwordEncoder;
     @Mock UsuariosService usuariosService;
     @Mock TokensCerradosService tokensCerrados;
+    @Mock TokensRenovacionService tokensRenovacion;
     // JwtService real (no simulado): así se prueba que el token emitido de verdad se puede leer
     private static final String CLAVE = "clave-de-prueba-solo-para-tests-0123456789";
     @Spy JwtService jwtService = new JwtService(CLAVE, 480);
@@ -60,6 +61,8 @@ class AuthServiceTest {
         when(usuariosRepository.findByEmailIgnoreCase("ana@mail.com")).thenReturn(Optional.of(ana));
         when(passwordEncoder.matches("123456", "hash")).thenReturn(true);
         when(tiposRepository.findById(2L)).thenReturn(Optional.of(tipo(2L, "manicurista")));
+        when(usuariosRepository.findById(1L)).thenReturn(Optional.of(ana));
+        when(tokensRenovacion.emitir(1L)).thenReturn("refresh-nuevo");
     }
 
     // ---------- login ----------
@@ -69,6 +72,7 @@ class AuthServiceTest {
         LoginResponse respuesta = service.login(login("ana@mail.com", "123456"));
 
         assertNotNull(respuesta.getToken());
+        assertEquals("refresh-nuevo", respuesta.getRefreshToken());
         assertEquals(1L, respuesta.getId());
         assertEquals("MANICURISTA", respuesta.getRol());
     }
@@ -116,17 +120,54 @@ class AuthServiceTest {
         String token = service.login(login("ana@mail.com", "123456")).getToken();
         Jwt jwt = jwtService.leer(token);
 
-        service.logout("Bearer " + token);
+        service.logout("Bearer " + token, "refresh-de-ana");
 
         verify(tokensCerrados).cerrar(jwt.getId(), jwt.getExpiresAt());
+        verify(tokensRenovacion).revocar("refresh-de-ana");
     }
 
     @Test
     void logout_conTokenInventadoOSinHeader_noHaceNada() {
-        service.logout("Bearer inventado");
-        service.logout(null);
+        service.logout("Bearer inventado", null);
+        service.logout(null, "  ");
 
         verify(tokensCerrados, never()).cerrar(any(), any());
+        verify(tokensRenovacion, never()).revocar(any());
+    }
+
+    // ---------- renovar ----------
+
+    @Test
+    void renovar_conRefreshValido_devuelveUnParNuevoDelMismoUsuario() {
+        when(tokensRenovacion.usar("refresh-viejo")).thenReturn(1L);
+
+        LoginResponse respuesta = service.renovar("refresh-viejo");
+
+        assertEquals(1L, respuesta.getId());
+        assertEquals("MANICURISTA", respuesta.getRol());
+        assertEquals("refresh-nuevo", respuesta.getRefreshToken());
+        assertEquals("1", jwtService.leer(respuesta.getToken()).getSubject());
+    }
+
+    @Test
+    void renovar_usuarioDadoDeBaja_lanzaUnauthorizedYNoEmiteTokens() {
+        when(tokensRenovacion.usar("refresh-viejo")).thenReturn(1L);
+        ana.setActivo(false);
+
+        ResponseStatusException e = assertThrows(ResponseStatusException.class, () -> service.renovar("refresh-viejo"));
+
+        assertEquals(HttpStatus.UNAUTHORIZED, e.getStatusCode());
+        verify(tokensRenovacion, never()).emitir(any());
+    }
+
+    @Test
+    void renovar_refreshInvalido_propagaElUnauthorized() {
+        when(tokensRenovacion.usar("inventado"))
+                .thenThrow(new ResponseStatusException(HttpStatus.UNAUTHORIZED, TokensRenovacionService.SESION_VENCIDA));
+
+        ResponseStatusException e = assertThrows(ResponseStatusException.class, () -> service.renovar("inventado"));
+
+        assertEquals(HttpStatus.UNAUTHORIZED, e.getStatusCode());
     }
 
     // Los permisos por rol (@PreAuthorize) se prueban con MockMvc en los tests de integración (ver RolesIntegrationTest)

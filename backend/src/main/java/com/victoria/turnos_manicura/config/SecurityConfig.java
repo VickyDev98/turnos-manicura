@@ -36,7 +36,7 @@ import java.util.Set;
 @EnableMethodSecurity
 public class SecurityConfig {
 
-    private static final Set<String> RUTAS_PUBLICAS = Set.of("/auth/login", "/auth/registro", "/auth/logout");
+    private static final Set<String> RUTAS_PUBLICAS = Set.of("/auth/login", "/auth/registro", "/auth/renovar", "/auth/logout");
 
     @Bean
     public PasswordEncoder passwordEncoder() {
